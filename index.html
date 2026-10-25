@@ -77,36 +77,7 @@ const renderAssignmentEditor=()=>{
  const empty=document.createElement('option');empty.value='';empty.textContent='— À attribuer —';select.append(empty);
  coaches.forEach(x=>{const option=document.createElement('option');option.value=x.id;option.textContent=x.name;select.append(option)});
  select.value=assigned||'';
- select.onchange=async()=>{
-    const chosenId=select.value||null;
-    const chosenCoach=coaches.find(x=>x.id===chosenId);
-    if(chosenId && chosenId!==assigned){
-      const status=chosenCoach?getStatus(c,chosenCoach):'';
-      if(status!=='Disponible'){
-        const reason=status==='Indisponible'?'Ce coach a indiqué être indisponible.':status==='À confirmer'?'La disponibilité de ce coach est à confirmer.':'Ce coach n’a pas renseigné ses disponibilités.';
-        if(!confirm(reason+'\n\nSouhaites-tu tout de même lui attribuer ce cours ?')){select.value=assigned||'';return}
-      }
-      const startMinutes=t=>{const parts=String(t||'00:00').slice(0,5).split(':').map(Number);return parts[0]*60+parts[1]};
-      const candidateStart=startMinutes(c.display_time||c.start_time);
-      const candidateEnd=candidateStart+(Number(c.duration_minutes)||60);
-      const conflict=series.find(other=>{
-        if(other.id===c.id||other.occurrence_date!==c.occurrence_date)return false;
-        const otherException=exceptions.find(x=>x.series_id===other.id&&x.occurrence_date===other.occurrence_date);
-        const otherOverrides=otherException?.overrides&&typeof otherException.overrides==='object'?otherException.overrides:{};
-        if((otherOverrides.assigned_coach_id||null)!==chosenId)return false;
-        const otherStart=startMinutes(other.display_time||other.start_time);
-        const otherEnd=otherStart+(Number(other.duration_minutes)||60);
-        return candidateStart<otherEnd&&otherStart<candidateEnd;
-      });
-      if(conflict && !confirm('Attention : ce coach est déjà affecté au cours « '+conflict.display_name+' » à '+String(conflict.display_time||conflict.start_time).slice(0,5)+'.\n\nConfirmer quand même cette attribution ?')){select.value=assigned||'';return}
-    }
-    select.disabled=true;
-    const overrides={...currentOverrides,assigned_coach_id:chosenId};
-    const payload={series_id:c.id,occurrence_date:c.occurrence_date,is_cancelled:currentException?.is_cancelled||false,overrides,created_by:session.user.id};
-    const {error}=await db.from('course_occurrence_exceptions').upsert(payload,{onConflict:'series_id,occurrence_date'});
-    if(error){notice('Enregistrement du coach animateur impossible : '+error.message);select.disabled=false;select.value=assigned||'';return}
-    await loadWeek();render()
-  };
+ select.onchange=async()=>{select.disabled=true;const overrides={...currentOverrides,assigned_coach_id:select.value||null};const payload={series_id:c.id,occurrence_date:c.occurrence_date,is_cancelled:currentException?.is_cancelled||false,overrides,created_by:session.user.id};const {error}=await db.from('course_occurrence_exceptions').upsert(payload,{onConflict:'series_id,occurrence_date'});if(error){notice('Enregistrement du coach animateur impossible : '+error.message);select.disabled=false;return}await loadWeek();render()};
  assignedRow.append(assignedLabel,select);assignmentArea.append(assignedRow);
  const tags=document.createElement('div');tags.className='tags';coaches.forEach(x=>{const st=getStatus(c,x),t=document.createElement('span');t.className='tag '+cls(st);t.textContent=x.name+' · '+(st||'—');tags.append(t)});assignmentArea.append(tags);
 };
