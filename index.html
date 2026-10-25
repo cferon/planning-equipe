@@ -67,45 +67,37 @@ async function setStatus(c,coach){const current=getStatus(c,coach),states=['','D
 function render(){const tabs=$('coachTabs');tabs.innerHTML='';if(!coaches.some(c=>c.name===active))active=(coaches.find(c=>!isAdmin&&c.id===currentMember?.coach_id)||coaches[0])?.name||'';if(!isAdmin&&view!=='coach')view='coach';(isAdmin?coaches:coaches.filter(c=>c.id===currentMember?.coach_id)).forEach(c=>{const b=document.createElement('button');b.className='coach-btn'+(view==='coach'&&active===c.name?' active':'');b.innerHTML=`<span class="dot" style="background:${colors[c.name]||'#64748b'}"></span>${c.name}`;b.onclick=()=>{active=c.name;view='coach';render()};tabs.append(b)});const managing=view==='manage';$('allView').textContent='Vue complète';$('coachTabs').classList.remove('hidden');$('hint').classList.toggle('hidden',managing);document.querySelector('.legend').classList.toggle('hidden',managing);$('hint').textContent=view==='coach'?`Semaine du ${currentWeek} · Mode ${active} : cliquez sur un cours pour modifier votre disponibilité. Les réponses des autres coachs restent visibles.`:'Vue complète : réponses de tous les coachs. Choisissez un coach pour modifier sa réponse.';$('weekTitle').textContent='Semaine du '+currentWeek;const board=$('board');board.innerHTML='';days.forEach((day,i)=>{const col=document.createElement('section');col.className='day';col.innerHTML=`<h2>${day} <span style="font-weight:500;color:#64748b">${dateFr(plusDays(currentWeek,i))}</span></h2>`;series.filter(c=>c.weekday===i+1).sort((a,b)=>String(a.display_time).localeCompare(String(b.display_time))).forEach(c=>{const card=document.createElement('article');card.className='class';const occurrenceException=exceptions.find(x=>x.series_id===c.id&&x.occurrence_date===c.occurrence_date);const occurrenceOverrides=occurrenceException?.overrides&&typeof occurrenceException.overrides==='object'?occurrenceException.overrides:{};const assignedCoachId=occurrenceOverrides.assigned_coach_id||null;const assignedCoach=coaches.find(x=>x.id===assignedCoachId);const selectedCoach=coaches.find(x=>x.name===active);if(view==='coach'&&selectedCoach&&assignedCoachId===selectedCoach.id){card.classList.add('assigned-to-me')}if((view==='all'&&assignedCoachId)||(view==='coach'&&selectedCoach&&assignedCoachId===selectedCoach.id)){const assignedStatus=assignedCoach?getStatus(c,assignedCoach):'';const borderColor=assignedStatus==='Disponible'?'#16804a':assignedStatus==='Indisponible'?'#dc2626':assignedStatus==='À confirmer'?'#eab308':'#9ca3af';card.style.border='3px solid '+borderColor;card.style.background='#f0fbf4'}const head=document.createElement('div');head.className='classhead';const name=document.createElement('span');name.className='name';name.textContent=c.display_name;const right=document.createElement('span');right.style.cssText='display:flex;align-items:start;gap:5px';const time=document.createElement('span');time.className='time';time.textContent=String(c.display_time).slice(0,5);right.append(time);if(view==='manage'){const edit=document.createElement('button');edit.textContent='✎';edit.title='Modifier le nom, la date, l’heure ou la récurrence';edit.setAttribute('aria-label','Modifier le cours');edit.style.cssText='padding:2px 6px;font-size:15px;line-height:1';edit.onclick=()=>editCourseSeries(c);right.append(edit);const del=document.createElement('button');del.textContent='×';del.title='Supprimer cette occurrence ou cette occurrence et les suivantes';del.style.cssText='padding:1px 6px;color:#9c2525;font-size:16px;line-height:1';del.onclick=()=>deleteOccurrence(c);right.append(del)}head.append(name,right);card.append(head);if(view==='all'&&assignedCoachId){const assignmentBadge=document.createElement('div');assignmentBadge.className='tag';assignmentBadge.style.cssText='display:inline-block;margin-top:5px;background:#d9f7e5;color:#166534;font-weight:900;font-size:11px;padding:5px 7px';assignmentBadge.textContent='✓ '+(coaches.find(x=>x.id===assignedCoachId)?.name||'Coach');card.append(assignmentBadge)}if(view==='coach'){const coach=coaches.find(x=>x.name===active),st=coach?getStatus(c,coach):'';const btn=document.createElement('button');btn.className='slot '+cls(st);btn.textContent=st||'Cliquer pour répondre';btn.onclick=()=>coach&&setStatus(c,coach);card.append(btn);if(coach&&assignedCoachId===coach.id){const badge=document.createElement('div');badge.className='tag';badge.textContent='★ Cours à animer';badge.style.cssText='display:inline-block;margin-top:6px;background:#d9f7e5;color:#166534;font-weight:800';card.append(badge)}const tags=document.createElement('div');tags.className='tags';coaches.filter(x=>x.name!==active&&getStatus(c,x)).forEach(x=>{const t=document.createElement('span');t.className='tag '+cls(getStatus(c,x));t.textContent=x.name+' · '+getStatus(c,x);tags.append(t)});card.append(tags)}else if(view==='all'){
 const currentException=exceptions.find(x=>x.series_id===c.id&&x.occurrence_date===c.occurrence_date);
 const currentOverrides=currentException?.overrides&&typeof currentException.overrides==='object'?currentException.overrides:{};
-const assigned=currentOverrides.assigned_coach_id||null;
+let assigned=currentOverrides.assigned_coach_id||null;
 const assignmentArea=document.createElement('div');assignmentArea.style.marginTop='5px';
-const tags=document.createElement('div');tags.className='tags';
-coaches.forEach(x=>{
- const st=getStatus(c,x);
- const t=document.createElement('button');
- t.type='button';t.className='tag '+cls(st);
- t.textContent=x.name+' · '+(st||'—');
- t.title=assigned===x.id?'Cliquer pour retirer cette affectation':'Cliquer pour attribuer ce cours à '+x.name;
- t.style.cssText='cursor:pointer;border:1px solid transparent;font:inherit;font-size:10px;border-radius:5px;padding:3px 5px;font-weight:750;white-space:nowrap';
- if(assigned===x.id){t.style.outline='2px solid #16804a';t.style.outlineOffset='1px'}
- t.onclick=async()=>{
-  const nextId=assigned===x.id?null:x.id;
-  if(nextId&&st!=='Disponible'){
-   const reason=st==='Indisponible'?'Ce coach a indiqué qu’il est indisponible.':st==='À confirmer'?'La disponibilité de ce coach est à confirmer.':'Ce coach n’a pas répondu.';
-   if(!confirm(reason+'\n\nSouhaites-tu tout de même lui attribuer ce cours ?'))return;
-  }
-  if(nextId&&nextId!==assigned){
-   const overlaps=series.filter(other=>other.id!==c.id&&other.occurrence_date===c.occurrence_date).filter(other=>{
-    const ex=exceptions.find(e=>e.series_id===other.id&&e.occurrence_date===other.occurrence_date);
-    const otherId=ex?.overrides?.assigned_coach_id;
-    if(otherId!==nextId)return false;
-    const startA=String(c.display_time||c.start_time).slice(0,5).split(':').reduce((h,m)=>h*60+Number(m),0);
-    const startB=String(other.display_time||other.start_time).slice(0,5).split(':').reduce((h,m)=>h*60+Number(m),0);
-    const endA=startA+(Number(c.duration_minutes)||60),endB=startB+(Number(other.duration_minutes)||60);
-    return startA<endB&&startB<endA;
-   });
-   if(overlaps.length&&!confirm(x.name+' est déjà affecté à un autre cours qui chevauche cet horaire.\n\nSouhaites-tu tout de même continuer ?'))return;
-  }
-  t.disabled=true;
-  const overrides={...currentOverrides,assigned_coach_id:nextId};
-  const payload={series_id:c.id,occurrence_date:c.occurrence_date,is_cancelled:currentException?.is_cancelled||false,overrides,created_by:session.user.id};
-  const {error}=await db.from('course_occurrence_exceptions').upsert(payload,{onConflict:'series_id,occurrence_date'});
-  if(error){notice('Enregistrement du coach animateur impossible : '+error.message);t.disabled=false;return}
-  await loadWeek();render();
- };
- tags.append(t);
-});
-assignmentArea.append(tags);
+const saveAssignment=async coachId=>{
+ const overrides={...currentOverrides,assigned_coach_id:coachId||null};
+ const payload={series_id:c.id,occurrence_date:c.occurrence_date,is_cancelled:currentException?.is_cancelled||false,overrides,created_by:session.user.id};
+ const {error}=await db.from('course_occurrence_exceptions').upsert(payload,{onConflict:'series_id,occurrence_date'});
+ if(error){notice('Enregistrement du coach animateur impossible : '+error.message);return}
+ await loadWeek();render();
+};
+const renderAssignmentEditor=()=>{
+ assignmentArea.innerHTML='';
+ const tags=document.createElement('div');tags.className='tags';
+ coaches.forEach(x=>{
+  const st=getStatus(c,x),t=document.createElement('button');
+  t.type='button';t.className='tag '+cls(st);t.textContent=x.name+' · '+(st||'—');
+  t.title='Attribuer '+x.name+' à ce cours'+(st?' (disponibilité : '+st+')':' (pas répondu)');
+  t.style.cssText='border:1px solid transparent;cursor:pointer;font:inherit;font-size:10px;padding:4px 6px';
+  if(x.id===assigned){t.style.outline='2px solid #16804a';t.style.outlineOffset='1px'}
+  t.onclick=()=>saveAssignment(x.id);
+  tags.append(t);
+ });
+ assignmentArea.append(tags);
+ if(assigned){
+  const clear=document.createElement('button');clear.type='button';clear.textContent='Retirer l’affectation';clear.style.cssText='padding:4px 7px;font-size:10px;margin-top:5px;color:#9c2525';
+  clear.onclick=()=>saveAssignment(null);assignmentArea.append(clear);
+ }
+};
+if(assigned){
+ const badge=document.createElement('div');badge.className='tag';badge.style.cssText='display:inline-block;margin-top:5px;background:#d9f7e5;color:#166534;font-weight:900;font-size:11px;padding:5px 7px';badge.textContent='✓ '+(coaches.find(x=>x.id===assigned)?.name||'Coach');assignmentArea.append(badge);
+ const modify=document.createElement('button');modify.textContent='Modifier';modify.title='Afficher les disponibilités pour changer le coach attribué';modify.style.cssText='display:block;padding:4px 7px;font-size:10px;margin-top:5px';modify.onclick=()=>{renderAssignmentEditor();modify.remove()};assignmentArea.append(modify);
+}else{renderAssignmentEditor()}
 card.append(assignmentArea)
 }col.append(card)});board.append(col)});$('summary').textContent=managing?`${series.length} cours affichés · Gestion des cours`:`${series.length} cours affichés · ${availability.filter(a=>a.status==='Disponible'&&a.occurrence_date>=currentWeek&&a.occurrence_date<=plusDays(currentWeek,5)).length} réponses « Disponible »`;if(!$('coachManager').classList.contains('hidden'))renderCoachManager();if(!$('courseManager').classList.contains('hidden')){}}
 async function editCourseSeries(c){
