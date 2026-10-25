@@ -85,7 +85,7 @@ alertKinds.forEach(kind=>{
  const icon=document.createElement('span');
  icon.textContent=symbol;
  icon.setAttribute('aria-label',kind==='no'?'Coach indisponible':kind==='maybe'?'Disponibilité à confirmer':'Pas de réponse');
- icon.style.cssText='display:inline-flex;align-items:center;justify-content:center;flex:0 0 16px;width:16px;height:16px;border:1.5px solid '+color+';border-radius:50%;color:'+color+';font-size:11px;font-weight:800;line-height:1;cursor:help;margin-left:auto';
+ icon.style.cssText='display:inline-grid;place-items:center;flex:0 0 17px;width:17px;height:17px;box-sizing:border-box;border:1.4px solid '+color+';border-radius:50%;color:'+color+';font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;line-height:17px;text-align:center;vertical-align:middle;cursor:help;margin-left:auto;padding:0';if(symbol==='×')icon.style.fontSize='13px';if(symbol==='?')icon.style.fontSize='11px';
  const matches=alertItems.filter(a=>a.kind===kind);
  icon.title=matches.map(a=>`${dateFr(dayDateForAlerts)} · ${a.course.display_name||a.course.course_name} — ${a.assigned.name} : ${a.status||'Pas répondu'}`).join('\\n');
  dayHeading.append(icon);
