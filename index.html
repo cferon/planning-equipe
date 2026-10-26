@@ -78,7 +78,7 @@ const alertItems=series.filter(x=>x.weekday===i+1&&x.occurrence_date===dayDateFo
  const kind=status==='Indisponible'?'no':status==='À confirmer'?'maybe':'none';
  return {course,assigned,status,kind};
  }).filter(Boolean);
-if(alertItems.length){
+if(alertItems.length&&view!=='manage'){
  const icon=document.createElement('span');
  icon.textContent='!';
  icon.setAttribute('aria-label','Problème de disponibilité sur un ou plusieurs cours attribués');
@@ -93,8 +93,8 @@ if(alertItems.length){
  alertWrap.style.cssText='position:relative;display:inline-flex;align-items:center;flex:0 0 17px;margin-left:auto';
  const alertPopup=document.createElement('span');
  alertPopup.textContent=alertDetails;
- alertPopup.style.cssText='display:none;position:fixed;left:50%;top:20vh;transform:translateX(-50%);z-index:9999;width:max-content;min-width:190px;max-width:calc(100vw - 28px);max-height:60vh;overflow:auto;overflow-wrap:anywhere;white-space:pre-line;background:#fff;border:1px solid #d1d5db;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);padding:10px 12px;color:#334155;font-size:12px;font-weight:500;line-height:1.45';
- const toggleAlert=()=>{const opening=alertPopup.style.display==='none';alertPopup.style.display=opening?'block':'none';icon.setAttribute('aria-expanded',String(opening));};
+ alertPopup.style.cssText='display:none;position:fixed;z-index:9999;width:max-content;min-width:190px;max-width:calc(100vw - 28px);max-height:60vh;overflow:auto;overflow-wrap:anywhere;white-space:pre-line;background:#fff;border:1px solid #d1d5db;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);padding:10px 12px;color:#334155;font-size:12px;font-weight:500;line-height:1.45';
+ const toggleAlert=()=>{const opening=alertPopup.style.display==='none';if(opening){const r=icon.getBoundingClientRect();alertPopup.style.left='50%';alertPopup.style.top=(r.top+r.height/2)+'px';alertPopup.style.transform='translate(-50%,-50%)';}alertPopup.style.display=opening?'block':'none';icon.setAttribute('aria-expanded',String(opening));};
  icon.addEventListener('click',e=>{e.stopPropagation();toggleAlert()});
  icon.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleAlert()}if(e.key==='Escape'){alertPopup.style.display='none';icon.setAttribute('aria-expanded','false')}});
  document.addEventListener('click',e=>{if(!alertWrap.contains(e.target)){alertPopup.style.display='none';icon.setAttribute('aria-expanded','false')}});
