@@ -164,7 +164,15 @@ async function editCourseField(c,field){
   const input=prompt('Nouvelle durée en minutes (nombre entier de 1 à 1440)',String(s.duration_minutes||60));if(input===null)return;value=Number(input);if(!Number.isInteger(value)||value<1||value>1440)return notice('Durée invalide. Saisissez un nombre entier entre 1 et 1440 minutes.');if(value===Number(s.duration_minutes||60))return;updates.duration_minutes=value;label='Durée';
  }else return;
  if(!confirm('Modifier uniquement '+label.toLowerCase()+' ? Le changement s’appliquera à toute la série de cours, pas seulement à cette occurrence.'))return;
- updates.updated_at=new Date().toISOString();const {error}=await db.from('course_series').update(updates).eq('id',s.id);if(error)return notice('Modification de '+label.toLowerCase()+' impossible : '+error.message);
+ updates.updated_at=new Date().toISOString();
+ let updateQuery=db.from('course_series').update(updates).eq('id',s.id);
+ // Évite qu'une ancienne ligne strictement identique réapparaisse comme un second cours après renommage.
+ if(field==='name'){
+  updateQuery=db.from('course_series').update(updates)
+   .eq('course_name',s.course_name).eq('weekday',s.weekday)
+   .eq('start_time',s.start_time).eq('duration_minutes',s.duration_minutes);
+ }
+ const {error}=await updateQuery;if(error)return notice('Modification de '+label.toLowerCase()+' impossible : '+error.message);
  if(overrideKey){const ex=exceptions.find(x=>x.series_id===s.id&&x.occurrence_date===c.occurrence_date);if(ex&&ex.overrides){const overrides={...ex.overrides};delete overrides[overrideKey];const {error:exError}=await db.from('course_occurrence_exceptions').update({overrides}).eq('series_id',s.id).eq('occurrence_date',c.occurrence_date);if(exError){notice(label+' modifié, mais une ancienne modification locale reste présente : '+exError.message)}}}
  await loadBase();await loadWeek();render();notice(label+' modifié.');
 }
