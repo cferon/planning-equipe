@@ -206,6 +206,15 @@ async function editCourseSeries(c){
  await loadBase();await loadWeek();render();if(!$('courseManager').classList.contains('hidden')){}
 }
 async function deleteOccurrence(c){
+ const s=series.find(x=>x.id===c.id);if(!s)return notice('Cours introuvable. Actualisez la page et réessayez.');
+ // Un cours ponctuel n'a pas de série à tronquer : demander une simple confirmation puis supprimer le cours.
+ const isOneOff=!!s.start_date&&!!s.end_date&&s.start_date===s.end_date;
+ if(isOneOff){
+  if(!confirm(`Supprimer définitivement le cours « ${c.display_name} » du ${dateFr(c.occurrence_date)} ?`))return;
+  const {error}=await db.from('course_series').delete().eq('id',s.id);
+  if(error){notice('Suppression impossible : '+error.message);return}
+  await loadBase();await loadWeek();render();return;
+ }
  const choice=prompt(`Supprimer « ${c.display_name} » (${dateFr(c.occurrence_date)}) :\n\n1 = cette occurrence uniquement\n2 = cette occurrence et toutes les suivantes\n3 = annuler`,'1');
  if(choice==='1'){
   const {error}=await db.from('course_occurrence_exceptions').upsert({series_id:c.id,occurrence_date:c.occurrence_date,is_cancelled:true,created_by:session.user.id},{onConflict:'series_id,occurrence_date'});
