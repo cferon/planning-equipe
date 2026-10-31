@@ -232,8 +232,81 @@ async function deleteOccurrence(c){
  }else{return}
  await loadWeek();render();if(!$('courseManager').classList.contains('hidden')){}
 }
-$('addCoach').onclick=async()=>{const input=$('newCoachName'),emailInput=$('newCoachEmail'),name=input.value.trim(),email=emailInput.value.trim().toLowerCase();if(!name)return notice('Saisissez le nom du coach.');if(!email||!/^\S+@\S+\.\S+$/.test(email))return notice('Saisissez une adresse e-mail valide.');if(coaches.some(c=>c.name.toLowerCase()===name.toLowerCase()))return notice('Ce coach existe déjà.');const {data:created,error}=await db.from('coaches').insert({name,active:true}).select('id,name').single();if(error)return notice('Ajout du coach impossible : '+error.message);const {data:existingMember,error:findError}=await db.from('team_members').select('email').eq('email',email).maybeSingle();if(findError){await db.from('coaches').update({active:false}).eq('id',created.id);return notice('Lecture du compte impossible : '+findError.message)}let memberResult;if(existingMember){memberResult=await db.from('team_members').update({display_name:name,active:true,coach_id:created.id,role:'coach'}).eq('email',email)}else{memberResult=await db.from('team_members').insert({email,display_name:name,active:true,coach_id:created.id,role:'coach'})}if(memberResult.error){await db.from('coaches').update({active:false}).eq('id',created.id);return notice('Le profil coach a été créé mais son accès n’a pas pu être enregistré : '+memberResult.error.message+' Vérifiez les colonnes et les droits Supabase.')}input.value='';emailInput.value='';await loadBase();render();renderCoachManager();notice('Coach ajouté. Son accès est associé à '+email+'.')};
-async function renderCoachManager(){const list=$('coachManageList');list.innerHTML='';const {data:members,error:membersError}=await db.from('team_members').select('email,display_name,coach_id,role').eq('active',true);if(membersError){notice('Impossible de charger les adresses e-mail : '+membersError.message);return}const {data:visits,error:visitsError}=await db.from('coach_site_visits').select('user_id,email,last_seen_at');const visitsByEmail=new Map((visits||[]).map(v=>[String(v.email||'').toLowerCase(),v.last_seen_at]));coaches.forEach(c=>{const member=(members||[]).find(m=>m.coach_id===c.id);const wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:5px;align-items:center;flex-wrap:wrap;border:1px solid #dbe3ef;border-radius:8px;padding:8px;min-width:min(100%,280px)';const info=document.createElement('div');info.style.cssText='display:flex;flex-direction:column;gap:3px;min-width:180px;flex:1';const label=document.createElement('strong');label.textContent=c.name+(member?' · '+member.email:' · e-mail non associé');const visitLabel=document.createElement('span');visitLabel.style.cssText='font-size:12px;color:#64748b';const visitTime=member?.email?visitsByEmail.get(String(member.email).toLowerCase()):null;visitLabel.textContent='Dernière visite : '+(visitTime?new Date(visitTime).toLocaleString('fr-FR',{dateStyle:'medium',timeStyle:'short'}):'aucune visite enregistrée');info.append(label,visitLabel);const edit=document.createElement('button');edit.textContent='Modifier';edit.onclick=async()=>{const n=prompt('Nom du coach :',c.name);if(n===null)return;const name=n.trim();if(!name)return notice('Le nom ne peut pas être vide.');if(coaches.some(x=>x.name.toLowerCase()===name.toLowerCase()&&x.id!==c.id))return notice('Ce nom existe déjà.');const e=prompt('Adresse e-mail du coach :',member?.email||'');if(e===null)return;const email=e.trim().toLowerCase();if(!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return notice('Saisissez une adresse e-mail valide.');if((members||[]).some(m=>m.email.toLowerCase()===email&&m.coach_id!==c.id))return notice('Cette adresse e-mail est déjà associée à un autre profil.');const {error:coachError}=await db.from('coaches').update({name,updated_at:new Date().toISOString()}).eq('id',c.id);if(coachError)return notice('Modification du nom impossible : '+coachError.message);let accessResult;if(member){accessResult=await db.from('team_members').update({email,display_name:name,active:true}).eq('coach_id',c.id)}else{accessResult=await db.from('team_members').insert({email,display_name:name,active:true,coach_id:c.id,role:'coach'})}if(accessResult.error){notice('Le nom a été modifié, mais l’adresse e-mail n’a pas pu être enregistrée : '+accessResult.error.message);await loadBase();render();renderCoachManager();return}if(active===c.name)active=name;await loadBase();render();renderCoachManager();notice('Nom et adresse e-mail mis à jour. Le coach devra se connecter avec cette adresse e-mail.')};const del=document.createElement('button');del.textContent='Désactiver';del.style.color='#9c2525';del.onclick=async()=>{if(!confirm(`Désactiver ${c.name} dans le planning partagé ? Ses réponses historiques seront conservées.`))return;const {error}=await db.from('coaches').update({active:false,updated_at:new Date().toISOString()}).eq('id',c.id);if(error)return notice('Désactivation impossible : '+error.message);await loadBase();render();renderCoachManager()};wrap.append(info,edit,del);list.append(wrap)})}
+$('addCoach').onclick=async()=>{const input=$('newCoachName'),emailInput=$('newCoachEmail'),name=input.value.trim(),email=emailInput.value.trim().toLowerCase();if(!name)return notice('Saisissez le nom du coach.');if(!email||!/^\S+@\S+\.\S+$/.test(email))return notice('Saisissez une adresse e-mail valide.');if(coaches.some(c=>c.name.toLowerCase()===name.toLowerCase()))return notice('Ce coach existe déjà.');const {data:created,error}=await db.from('coaches').insert({name,active:true}).select('id,name').single();if(error)return notice('Ajout du coach impossible : '+error.message);const {data:existingMember,error:findError}=await db.from('team_members').select('email').eq('email',email).maybeSingle();if(findError){await db.from('coaches').update({active:false}).eq('id',created.id);return notice('Lecture du compte impossible : '+findError.message)}let memberResult;if(existingMember){memberResult=await db.from('team_members').update({display_name:name,active:true,coach_id:created.id,role:'coach'}).eq('email',email)}else{memberResult=await db.from('team_members').insert({email,display_name:name,active:true,coach_id:created.id,role:'coach'})}if(memberResult.error){await db.from('coaches').update({active:false}).eq('id',created.id);return notice('Le profil coach a été créé mais son accès n’a pas pu être enregistré : '+memberResult.error.message+' Vérifiez les colonnes et les droits Supabase.')}input.value='';emailInput.value='';await loadBase();render();notice('Coach ajouté. Son accès est associé à '+email+'.')};
+async function renderCoachManager(){
+ const list=$('coachManageList');
+ list.innerHTML='';
+ // Charger tous les profils, y compris les coachs désactivés, pour permettre leur réactivation.
+ const [{data:allCoaches,error:coachesError},{data:members,error:membersError},{data:visits,error:visitsError}]=await Promise.all([
+  db.from('coaches').select('id,name,active').order('name'),
+  db.from('team_members').select('email,display_name,coach_id,role,active'),
+  db.from('coach_site_visits').select('user_id,email,last_seen_at')
+ ]);
+ if(coachesError)return notice('Impossible de charger les coachs : '+coachesError.message);
+ if(membersError)return notice('Impossible de charger les adresses e-mail : '+membersError.message);
+ if(visitsError)console.warn('Historique des visites indisponible :',visitsError.message);
+ const visitsByEmail=new Map((visits||[]).map(v=>[String(v.email||'').toLowerCase(),v.last_seen_at]));
+ for(const c of (allCoaches||[])){
+  const member=(members||[]).find(m=>m.coach_id===c.id);
+  const wrap=document.createElement('div');
+  wrap.style.cssText='display:flex;gap:5px;align-items:center;flex-wrap:wrap;border:1px solid #dbe3ef;border-radius:8px;padding:8px;min-width:min(100%,280px);opacity:'+(c.active?1:.7);
+  const info=document.createElement('div');
+  info.style.cssText='display:flex;flex-direction:column;gap:3px;min-width:180px;flex:1';
+  const label=document.createElement('strong');
+  label.textContent=c.name+(member?' · '+member.email:' · e-mail non associé')+(c.active?'':' · DÉSACTIVÉ');
+  const visitLabel=document.createElement('span');
+  visitLabel.style.cssText='font-size:12px;color:#64748b';
+  const visitTime=member?.email?visitsByEmail.get(String(member.email).toLowerCase()):null;
+  visitLabel.textContent='Dernière visite : '+(visitTime?new Date(visitTime).toLocaleString('fr-FR',{dateStyle:'medium',timeStyle:'short'}):'aucune visite enregistrée');
+  info.append(label,visitLabel);
+  const edit=document.createElement('button');
+  edit.textContent='Modifier';
+  edit.onclick=async()=>{
+   const n=prompt('Nom du coach :',c.name);if(n===null)return;
+   const name=n.trim();if(!name)return notice('Le nom ne peut pas être vide.');
+   if((allCoaches||[]).some(x=>x.name.toLowerCase()===name.toLowerCase()&&x.id!==c.id))return notice('Ce nom existe déjà.');
+   const e=prompt('Adresse e-mail du coach :',member?.email||'');if(e===null)return;
+   const email=e.trim().toLowerCase();if(!email||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))return notice('Saisissez une adresse e-mail valide.');
+   if((members||[]).some(m=>m.email.toLowerCase()===email&&m.coach_id!==c.id&&m.active))return notice('Cette adresse e-mail est déjà associée à un autre profil actif.');
+   const {error:coachError}=await db.from('coaches').update({name,updated_at:new Date().toISOString()}).eq('id',c.id);
+   if(coachError)return notice('Modification du nom impossible : '+coachError.message);
+   let accessResult;
+   if(member)accessResult=await db.from('team_members').update({email,display_name:name}).eq('coach_id',c.id);
+   else accessResult=await db.from('team_members').insert({email,display_name:name,active:!!c.active,coach_id:c.id,role:'coach'});
+   if(accessResult.error)return notice('Le nom a été modifié, mais l’adresse e-mail n’a pas pu être enregistrée : '+accessResult.error.message);
+   await loadBase();render();notice('Nom et adresse e-mail mis à jour.');
+  };
+  wrap.append(info,edit);
+  if(c.active){
+   const del=document.createElement('button');del.textContent='Désactiver';del.style.color='#9c2525';
+   del.onclick=async()=>{
+    if(!confirm(`Désactiver ${c.name} ? Son accès au planning sera coupé, mais ses disponibilités, affectations et réponses historiques seront conservées.`))return;
+    if(member){
+     const {error:memberError}=await db.from('team_members').update({active:false}).eq('coach_id',c.id);
+     if(memberError)return notice('Désactivation de l’accès impossible : '+memberError.message);
+    }
+    const {error}=await db.from('coaches').update({active:false,updated_at:new Date().toISOString()}).eq('id',c.id);
+    if(error){if(member)await db.from('team_members').update({active:true}).eq('coach_id',c.id);return notice('Désactivation impossible : '+error.message)}
+    await loadBase();render();
+   };
+   wrap.append(del);
+  }else{
+   const restore=document.createElement('button');restore.textContent='Réactiver';restore.style.color='#16804a';
+   restore.onclick=async()=>{
+    if(!confirm(`Réactiver ${c.name} et son accès au planning ?`))return;
+    const {error}=await db.from('coaches').update({active:true,updated_at:new Date().toISOString()}).eq('id',c.id);
+    if(error)return notice('Réactivation impossible : '+error.message);
+    if(member){
+     const {error:memberError}=await db.from('team_members').update({active:true,display_name:c.name,role:'coach'}).eq('coach_id',c.id);
+     if(memberError){await db.from('coaches').update({active:false}).eq('id',c.id);return notice('Le profil a été réactivé mais son accès n’a pas pu être rétabli : '+memberError.message)}
+    }
+    await loadBase();render();
+   };
+   wrap.append(restore);
+  }
+  list.append(wrap);
+ }
+}
 $('addCourse').onclick=async()=>{
  const button=$('addCourse');if(button.disabled)return;
  const name=$('courseName').value.trim(),day=$('courseDay').value,time=$('courseTime').value,type=$('courseType').value,duration=Number($('courseDuration').value);
