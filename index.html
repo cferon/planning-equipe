@@ -112,6 +112,19 @@ const dayDateForAlerts=plusDays(currentWeek,i);
 const alertItems=series.filter(x=>x.weekday===i+1&&x.occurrence_date===dayDateForAlerts).map(course=>{
  const ex=exceptions.find(e=>e.series_id===course.id&&e.occurrence_date===course.occurrence_date);
  const assignedIds=getAssignedIds(ex?.overrides);
+ if(!assignedIds.length)return null;
+
+ // 1. Vérifier s'il y a un coach supprimé ou désactivé parmi les affectés
+ const invalidIds=assignedIds.filter(id=>!coaches.some(co=>co.id===id));
+ if(invalidIds.length){
+  return {
+   course,
+   status: "⚠️ Affectation invalide : le cours est affecté à un coach désactivé ou supprimé !",
+   kind: "no"
+  };
+ }
+
+ // 2. Logique de disponibilité existante (si le coach assigné n'est pas dispo)
  const assigned=coaches.filter(co=>assignedIds.includes(co.id));
  if(!assigned.length)return null;
  const relevant=view==='coach'?assigned.filter(co=>co.id===coaches.find(x=>x.name===active)?.id):assigned;
@@ -290,6 +303,26 @@ async function renderCoachManager(){
     await loadBase();render();
    };
    wrap.append(del);
+
+   // --- AJOUT : Bouton de Suppression Définitive sécurisée ---
+   const hardDel=document.createElement('button');hardDel.textContent='Supprimer...';hardDel.style.color='#9c2525';hardDel.style.fontWeight='bold';
+   hardDel.onclick=async()=>{
+    const confirmationName=prompt(`SUPPRESSION DÉFINITIVE\n\nPour supprimer définitivement ${c.name} et toutes ses données (disponibilités, affectations, profil, accès et historique), veuillez saisir exactement son nom ci-dessous :`);
+    if(confirmationName!==c.name)return notice('Nom incorrect. Suppression annulée.');
+    if(!confirm(`Dernière confirmation : voulez-vous vraiment effacer définitivement ${c.name} de la base de données ?`))return;
+
+    // Suppression dans l'ordre des dépendances Supabase
+    await db.from('coach_availability').delete().eq('coach_id',c.id);
+    if(member)await db.from('team_members').delete().eq('coach_id',c.id);
+    await db.from('coach_site_visits').delete().eq('email',member?.email);
+    const {error}=await db.from('coaches').delete().eq('id',c.id);
+    if(error)return notice('Erreur lors de la suppression définitive : '+error.message);
+
+    notice('Le coach et toutes ses données associées ont été supprimés.');
+    await loadBase();await loadWeek();render();renderCoachManager();
+   };
+   wrap.append(hardDel);
+   // -----------------------------------------------------------
   }else{
    const restore=document.createElement('button');restore.textContent='Réactiver';restore.style.color='#16804a';
    restore.onclick=async()=>{
