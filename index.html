@@ -1,5 +1,14 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="fr"><head><link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<meta name="theme-color" content="#111111"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Activer le mode Web App en plein écran sur iOS -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mon App">
+
+<!-- Icône spécifique pour l'écran d'accueil iOS -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Planning des cours collectifs - Xtreme Attitude</title>
 <link rel="icon" type="image/png" href="./logo.png">
 <style>
@@ -357,5 +366,12 @@ $('addCourse').onclick=async()=>{
  }finally{button.disabled=false;button.textContent='+ Ajouter le cours'}
 };
 $('retrySession').addEventListener('click',()=>{if(navigator.onLine===false){$('loginMsg').textContent='Le téléphone semble toujours hors ligne. Réessayez dès que la connexion revient.';return}$('loginMsg').textContent='Vérification de la session…';init()});window.addEventListener('online',()=>{if(session&&$('loginPanel').classList.contains('hidden')===false){$('loginMsg').textContent='Réseau rétabli : vérification de votre session…';init()}});db.auth.onAuthStateChange((_event,s)=>{session=s;if(s)setTimeout(()=>init(),0)});init();
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(reg => console.log('Service Worker enregistré !', reg))
+        .catch(err => console.log('Échec de l\'enregistrement :', err));
+    });
+  }
 </script>
 </body></html>
