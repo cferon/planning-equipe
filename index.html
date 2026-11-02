@@ -30,6 +30,40 @@ button,select,input{font:inherit;border:1px solid var(--line);border-radius:8px;
  #printReport tr{display:table-row!important;break-inside:avoid;page-break-inside:avoid}
  #printReport th,#printReport td{display:table-cell!important;border-bottom:1px solid #ddd;padding:6px}
  @page{size:auto;margin:12mm}
+}
+/* Panneaux de gestion : différenciés du planning */
+#coachManager {
+  background: #edf4ff !important;
+  border: 2px solid #8bb8f0 !important;
+  box-shadow: 0 3px 10px rgba(49, 91, 214, 0.10);
+}
+
+#courseManager {
+  background: #fff6e8 !important;
+  border: 2px solid #efc477 !important;
+  box-shadow: 0 3px 10px rgba(180, 120, 20, 0.10);
+}
+
+#monthlyPanel {
+  background: #f5efff !important;
+  border: 2px solid #c4a5ed !important;
+  box-shadow: 0 3px 10px rgba(120, 70, 180, 0.10);
+}
+
+/* Titres des panneaux */
+#coachManager > strong {
+  color: #2456a6;
+  font-size: 15px;
+}
+
+#courseManager > strong {
+  color: #95600c;
+  font-size: 15px;
+}
+
+#monthlyPanel > strong {
+  color: #7041a3;
+  font-size: 15px;
 }</style></head><body>
 <header><div class="brand"><img class="brand-logo" src="./logo.png" alt="Logo Xtreme Attitude"><div class="brand-copy"><div class="venue-name">Xtreme Attitude</div><h1><span class="brand-yellow">Planning</span> des cours collectifs</h1></div></div><div class="tagline"><span class="tagline-line">Je <span class="brand-yellow">viens</span>,</span> <span class="tagline-line">je me sens <span class="brand-yellow">bien</span></span></div><small id="weekTitle">Planning partagé</small></header>
 <main>
