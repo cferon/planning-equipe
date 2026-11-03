@@ -852,77 +852,93 @@
               await loadWeek(); render();
             };
             const renderAssignmentEditor = () => {
-              const firstAssignment = assignedIds.length === 0;
-              assignmentArea.innerHTML = ''; 
-              const help = document.createElement('div'); 
-              help.style.cssText = 'font-size:10px;color:#64748b;margin:0 0 5px'; 
-              help.textContent = firstAssignment ? 'Première affectation : cliquez directement sur le coach.' : 'Modification : choisissez le ou les coachs, puis cliquez sur Valider.';
-              assignmentArea.append(help); 
-              const tags = document.createElement('div'); 
+              // On mémorise si la liste était initialement vide au moment d'ouvrir l'éditeur
+              const isBrandNew = assignedIds.length === 0;
+
+              assignmentArea.innerHTML = '';
+              const help = document.createElement('div');
+              help.style.cssText = 'font-size:10px;color:#64748b;margin:0 0 5px';
+              // Le texte s'adapte selon s'il y avait déjà des coachs au départ ou non
+              help.textContent = isBrandNew ? 'Première affectation : cliquez directement sur le coach.' : 'Modification : choisissez le ou les coachs, puis cliquez sur Valider.';
+              assignmentArea.append(help);
+
+              const tags = document.createElement('div');
               tags.className = 'tags';
+
               coaches.forEach(x => {
-                const st = getStatus(c, x), t = document.createElement('button'); 
-                t.type = 'button'; 
-                t.className = 'tag ' + cls(st); 
-                t.textContent = x.name + ' · ' + (st || '—'); 
-                t.title = 'Cliquer pour ' + (assignedIds.includes(x.id) ? 'retirer ' + x.name : 'ajouter ' + x.name) + ' · disponibilité : ' + (st || 'pas répondu'); t.style.cssText = 'border:1px solid transparent;cursor:pointer;font:inherit;font-size:10px;padding:4px 6px';
-                if (assignedIds.includes(x.id)) { 
-                  t.style.outline = '2px solid #16804a'; 
-                  t.style.outlineOffset = '1px'; 
-                  t.textContent = '✓ ' + x.name + ' · ' + (st || '—') 
-                } 
-                t.onclick = () => { 
-                  if (firstAssignment) { 
-                    assignedIds = [x.id]; 
-                    saveAssignments(assignedIds); 
-                    return 
-                  } 
-                  assignedIds = assignedIds.includes(x.id) ? assignedIds.filter(id => id !== x.id) : [...assignedIds, x.id]; 
-                  renderAssignmentEditor() 
-                }; 
-                  tags.append(t)
+                const st = getStatus(c, x), t = document.createElement('button');
+                t.type = 'button';
+                t.className = 'tag ' + cls(st);
+                t.textContent = x.name + ' · ' + (st || '—');
+                t.title = 'Cliquer pour ' + (assignedIds.includes(x.id) ? 'retirer ' + x.name : 'ajouter ' + x.name) + ' · disponibilité : ' + (st || 'pas répondu');
+                t.style.cssText = 'border:1px solid transparent;cursor:pointer;font:inherit;font-size:10px;padding:4px 6px';
+
+                if (assignedIds.includes(x.id)) {
+                  t.style.outline = '2px solid #16804a';
+                  t.style.outlineOffset = '1px';
+                  t.textContent = '✓ ' + x.name + ' · ' + (st || '—');
+                }
+
+                t.onclick = () => {
+                  // Si c'était totalement vide au départ ET qu'on clique sur un unique coach, on valide direct
+                  if (isBrandNew && assignedIds.length === 0) {
+                    assignedIds = [x.id];
+                    saveAssignments(assignedIds);
+                    return;
+                  }
+                  // Sinon, on ajoute/retire de la liste normalement
+                  assignedIds = assignedIds.includes(x.id) ? assignedIds.filter(id => id !== x.id) : [...assignedIds, x.id];
+                  renderAssignmentEditor();
+                };
+                tags.append(t);
               });
-              assignmentArea.append(tags); 
-              if (!firstAssignment) { 
-                const validate = document.createElement('button'); 
-                validate.type = 'button'; 
-                validate.textContent = 'Valider'; 
-                validate.style.cssText = 'padding:5px 9px;font-size:11px;margin-top:7px'; 
-                validate.onclick = () => saveAssignments(assignedIds); 
-                assignmentArea.append(validate) 
+
+              assignmentArea.append(tags);
+
+              // Le bouton "Valider" s'affiche dès qu'on n'est plus dans le cas d'une création directe, 
+              // ou s'il y a déjà des modifications en cours (même si on a temporairement tout décoché)
+              const showValidateButton = !isBrandNew || assignedIds.length > 0;
+
+              if (showValidateButton) {
+                const validate = document.createElement('button');
+                validate.type = 'button';
+                validate.textContent = 'Valider';
+                validate.style.cssText = 'padding:5px 9px;font-size:11px;margin-top:7px';
+                validate.onclick = () => saveAssignments(assignedIds);
+                assignmentArea.append(validate);
               }
             };
-            const renderAssignedSummary = () => { 
-              assignmentArea.innerHTML = ''; 
-              const actions = document.createElement('div'); 
-              actions.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:5px'; 
-              const badge = document.createElement('div'); 
-              badge.className = 'tag'; 
-              badge.style.cssText = 'display:inline-block;margin:0;background:#d9f7e5;color:#166534;font-weight:900;font-size:11px;padding:5px 7px'; 
-              badge.textContent = '✓ ' + assignedIds.map(id => coaches.find(x => x.id === id)?.name).filter(Boolean).join(' + '); 
-              actions.append(badge); 
-              const modify = document.createElement('button'); 
-              modify.textContent = 'Modifier'; 
-              modify.title = 'Modifier la liste des coachs affectés'; 
-              modify.style.cssText = 'padding:4px 7px;font-size:10px;margin:0'; 
-              modify.onclick = () => renderAssignmentEditor(); 
-              actions.append(modify); assignmentArea.append(actions) 
+            const renderAssignedSummary = () => {
+              assignmentArea.innerHTML = '';
+              const actions = document.createElement('div');
+              actions.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:5px';
+              const badge = document.createElement('div');
+              badge.className = 'tag';
+              badge.style.cssText = 'display:inline-block;margin:0;background:#d9f7e5;color:#166534;font-weight:900;font-size:11px;padding:5px 7px';
+              badge.textContent = '✓ ' + assignedIds.map(id => coaches.find(x => x.id === id)?.name).filter(Boolean).join(' + ');
+              actions.append(badge);
+              const modify = document.createElement('button');
+              modify.textContent = 'Modifier';
+              modify.title = 'Modifier la liste des coachs affectés';
+              modify.style.cssText = 'padding:4px 7px;font-size:10px;margin:0';
+              modify.onclick = () => renderAssignmentEditor();
+              actions.append(modify); assignmentArea.append(actions)
             };
             if (assignedIds.length) {
-              renderAssignedSummary(); 
+              renderAssignedSummary();
             }
             else {
-            renderAssignmentEditor(); 
+              renderAssignmentEditor();
             }
             card.append(assignmentArea)
-          } 
+          }
           col.append(card)
-        }); 
+        });
         board.append(col)
-      }); 
-      $('summary').textContent = managing ? `${series.length} cours affichés · Gestion des cours` : `${series.length} cours affichés · ${availability.filter(a => a.status === 'Disponible' && a.occurrence_date >= currentWeek && a.occurrence_date <= plusDays(currentWeek, 5)).length} réponses « Disponible »`; 
-      if (!$('coachManager').classList.contains('hidden'))  {
-        renderCoachManager(); 
+      });
+      $('summary').textContent = managing ? `${series.length} cours affichés · Gestion des cours` : `${series.length} cours affichés · ${availability.filter(a => a.status === 'Disponible' && a.occurrence_date >= currentWeek && a.occurrence_date <= plusDays(currentWeek, 5)).length} réponses « Disponible »`;
+      if (!$('coachManager').classList.contains('hidden')) {
+        renderCoachManager();
       }
     }
     async function editCourseField(c, field) {
