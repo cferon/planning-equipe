@@ -635,10 +635,9 @@
   <main>
     <section id="loginPanel" class="class" style="max-width:520px;margin:24px auto;padding:18px">
       <h2>Connexion coach</h2>
-      <p class="hint">Connectez-vous avec l’adresse e-mail autorisée par la personne qui gère le planning. Vous recevrez
-        un lien de connexion.</p>
+      <p class="hint">Connectez-vous avec l’adresse e-mail autorisée par la personne qui gère le planning. Vous recevrez un code de connexion à 6 chiffres.</p>
       <form id="loginForm"><label for="email">Adresse e-mail</label><br><input id="email" type="email" required
-          autocomplete="email" style="width:100%;margin:8px 0"><button type="submit">Envoyer le lien magique</button>
+          autocomplete="email" style="width:100%;margin:8px 0"><button type="submit">Envoyer le code</button>
       </form>
       <p id="loginMsg" class="hint" aria-live="polite"></p><button id="retrySession" class="hidden"
         type="button">Réessayer la connexion</button>
@@ -729,7 +728,7 @@
     function dayNum(day) { return days.indexOf(day) + 1 } function cls(s) { return s === 'Disponible' ? 'yes' : s === 'Indisponible' ? 'no' : s === 'À confirmer' ? 'maybe' : 'none' }
     function dateFr(iso) { return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(iso + 'T12:00:00')) }
     function notice(t) { alert(t) }
-    $('loginForm').addEventListener('submit', async e => { e.preventDefault(); $('loginMsg').textContent = 'Envoi du lien…'; const { error } = await db.auth.signInWithOtp({ email: $('email').value.trim().toLowerCase(), options: { emailRedirectTo: location.href.split('#')[0] } }); $('loginMsg').textContent = error ? 'Erreur : ' + error.message : 'Si cette adresse est autorisée, un e-mail de connexion va être envoyé. Vérifiez aussi les courriers indésirables.' });
+    $('loginForm').addEventListener('submit', async e => { e.preventDefault(); $('loginMsg').textContent = 'Envoi du code…'; const { error } = await db.auth.signInWithOtp({ email: $('email').value.trim().toLowerCase() }); $('loginMsg').textContent = error ? 'Erreur : ' + error.message : 'Si cette adresse est autorisée, un code de connexion à 6 chiffres va vous être envoyé par e-mail. Vérifiez aussi les courriers indésirables.' });
     $('logout').onclick = async () => { await db.auth.signOut(); location.reload() };
     $('weekDate').onchange = async e => { currentWeek = mondayISO(e.target.value); $('weekDate').value = currentWeek; await loadWeek(); render() };
     $('allView').onclick = () => { $('courseManager').classList.add('hidden'); view = 'all'; render() };
