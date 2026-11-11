@@ -740,7 +740,7 @@
         const { error } = await db.auth.signInWithOtp({
           email: email,
           options: {
-            shouldCreateUser: true
+            shouldCreateUser: false
           }
         });
 
