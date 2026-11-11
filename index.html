@@ -635,14 +635,26 @@
   <main>
     <section id="loginPanel" class="class" style="max-width:520px;margin:24px auto;padding:18px">
       <h2>Connexion coach</h2>
-      <p class="hint">Connectez-vous avec l’adresse e-mail autorisée par la personne qui gère le planning. Vous recevrez
-        un code de connexion à 6 chiffres.</p>
-      <form id="loginForm"><label for="email">Adresse e-mail</label><br><input id="email" type="email" required
-          autocomplete="email" style="width:100%;margin:8px 0"><button type="submit">Envoyer le code</button>
+      <p class="hint" id="loginInstruction">Connectez-vous avec l’adresse e-mail autorisée par la personne qui gère le planning. Vous recevrez un code de connexion à 6 chiffres.</p>
+      
+      <!-- Étape 1 : Saisie de l'e-mail -->
+      <form id="loginForm">
+        <label for="email">Adresse e-mail</label><br>
+        <input id="email" type="email" required autocomplete="email" style="width:100%;margin:8px 0">
+        <button type="submit">Envoyer le code</button>
       </form>
-      <p id="loginMsg" class="hint" aria-live="polite"></p><button id="retrySession" class="hidden"
-        type="button">Réessayer la connexion</button>
+
+      <!-- Étape 2 : Saisie du code à 6 chiffres (masqué par défaut) -->
+      <form id="verifyForm" class="hidden" style="margin-top:12px;">
+        <label for="otpCode">Code à 6 chiffres reçu par e-mail</label><br>
+        <input id="otpCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" style="width:100%;margin:8px 0;letter-spacing:4px;font-size:18px;text-align:center;" required>
+        <button type="submit">Valider le code</button>
+      </form>
+
+      <p id="loginMsg" class="hint" aria-live="polite"></p>
+      <button id="retrySession" class="hidden" type="button">Réessayer la connexion</button>
     </section>
+
     <section id="appPanel" class="hidden">
       <div class="top">
         <div id="coachTabs" class="coach-tabs"></div>
@@ -738,7 +750,7 @@
       try {
         const { error } = await db.auth.signInWithOtp({
           email: email,
-          options: { shouldCreateUser: false }
+          options: { shouldCreateUser: true }
         });
 
         if (error) {
