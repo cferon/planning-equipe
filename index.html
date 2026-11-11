@@ -729,25 +729,51 @@
     function dayNum(day) { return days.indexOf(day) + 1 } function cls(s) { return s === 'Disponible' ? 'yes' : s === 'Indisponible' ? 'no' : s === 'À confirmer' ? 'maybe' : 'none' }
     function dateFr(iso) { return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(iso + 'T12:00:00')) }
     function notice(t) { alert(t) }
+    // Étape 1 : Demande d'envoi du code OTP
     $('loginForm').addEventListener('submit', async e => {
       e.preventDefault();
-
-      $('loginMsg').textContent = 'Envoi du code…';
-
       const email = $('email').value.trim().toLowerCase();
+      $('loginMsg').textContent = 'Envoi du code…';
 
       try {
         const { error } = await db.auth.signInWithOtp({
           email: email,
-          options: {
-            shouldCreateUser: false
-          }
+          options: { shouldCreateUser: false }
         });
 
-        $('loginMsg').textContent = error
-          ? 'Erreur : ' + error.message
-          : 'Si cette adresse est autorisée, un code de connexion à 6 chiffres va vous être envoyé par e-mail. Vérifiez aussi les courriers indésirables.';
+        if (error) {
+          $('loginMsg').textContent = 'Erreur : ' + error.message;
+        } else {
+          $('loginMsg').textContent = 'Code envoyé ! Vérifiez vos e-mails.';
+          $('loginForm').classList.add('hidden');
+          $('verifyForm').classList.remove('hidden');
+          $('loginInstruction').textContent = 'Entrez le code à 6 chiffres reçu à l’adresse ' + email;
+        }
+      } catch (err) {
+        $('loginMsg').textContent = 'Erreur : ' + err.message;
+      }
+    });
 
+    // Étape 2 : Vérification du code à 6 chiffres
+    $('verifyForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const email = $('email').value.trim().toLowerCase();
+      const token = $('otpCode').value.trim();
+      $('loginMsg').textContent = 'Vérification du code…';
+
+      try {
+        const { data, error } = await db.auth.verifyOtp({
+          email: email,
+          token: token,
+          type: 'email'
+        });
+
+        if (error) {
+          $('loginMsg').textContent = 'Code invalide ou expiré : ' + error.message;
+        } else {
+          $('loginMsg').textContent = 'Connexion réussie !';
+          init();
+        }
       } catch (err) {
         $('loginMsg').textContent = 'Erreur : ' + err.message;
       }
