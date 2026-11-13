@@ -153,11 +153,16 @@ async function loadWeek() {
 }
 function getAssignedIds(overrides) { const ids = Array.isArray(overrides?.assigned_coach_ids) ? overrides.assigned_coach_ids : []; const legacy = overrides?.assigned_coach_id; return [...new Set([...ids, ...(legacy ? [legacy] : [])])] }
 function getStatus(c, coach) { return availability.find(a => a.series_id === c.id && a.occurrence_date === c.occurrence_date && a.coach_id === coach.id)?.status || '' }
+function getDayCancellationReason(date) {
+  const cancelled = exceptions.filter(e => e.occurrence_date === date && e.is_cancelled);
+  return cancelled.map(e => e.overrides?.cancellation_reason).find(reason => typeof reason === 'string' && reason.trim()) || '';
+}
 async function setStatus(c, coach, requestedStatus) { const key = [coach.id, c.id, c.occurrence_date].join('|'); const previous = availabilityQueues.get(key) || Promise.resolve(); const task = previous.catch(() => { }).then(async () => { const current = getStatus(c, coach), status = current === requestedStatus ? '' : requestedStatus, old = availability.find(a => a.series_id === c.id && a.occurrence_date === c.occurrence_date && a.coach_id === coach.id); let result; if (status === '') { if (old) result = await db.from('coach_availability').delete().eq('coach_id', coach.id).eq('series_id', c.id).eq('occurrence_date', c.occurrence_date) } else result = await db.from('coach_availability').upsert({ coach_id: coach.id, series_id: c.id, occurrence_date: c.occurrence_date, status, updated_by: session.user.id }, { onConflict: 'coach_id,series_id,occurrence_date' }); if (result?.error) { notice('Enregistrement impossible : ' + result.error.message); return } await loadWeek(); render() }); availabilityQueues.set(key, task); try { await task } finally { if (availabilityQueues.get(key) === task) availabilityQueues.delete(key) } }
 function render() {
   const tabs = $('coachTabs'); tabs.innerHTML = ''; if (!coaches.some(c => c.name === active)) active = (coaches.find(c => !isAdmin && c.id === currentMember?.coach_id) || coaches[0])?.name || ''; if (!isAdmin && view !== 'coach') view = 'coach'; (isAdmin ? coaches : coaches.filter(c => c.id === currentMember?.coach_id)).forEach(c => { const b = document.createElement('button'); b.className = 'coach-btn' + (view === 'coach' && active === c.name ? ' active' : ''); b.innerHTML = `<span class="dot" style="background:${colors[c.name] || '#64748b'}"></span>${c.name}`; b.onclick = () => { active = c.name; view = 'coach'; render() }; tabs.append(b) }); const managing = view === 'manage'; $('allView').textContent = 'Vue complète'; $('coachTabs').classList.remove('hidden'); $('hint').classList.toggle('hidden', managing); document.querySelector('.legend').classList.toggle('hidden', managing); const weeklySummary = $('weeklySummary'); weeklySummary.classList.toggle('hidden', view !== 'all'); if (view === 'all') { const assignmentFor = c => { const e = exceptions.find(x => x.series_id === c.id && x.occurrence_date === c.occurrence_date); return getAssignedIds(e?.overrides) }; const assignedTotal = series.filter(c => assignmentFor(c).length).length; const total = series.length; const unassigned = total - assignedTotal; weeklySummary.innerHTML = ''; const title = document.createElement('strong'); title.textContent = 'Répartition de la semaine'; weeklySummary.append(title); const metrics = document.createElement('div'); metrics.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:7px;margin:8px 0 12px';[[total, 'Cours prévus', '#334155'], [assignedTotal, 'Affectés', '#16804a'], [unassigned, 'Sans coach', '#b45309']].forEach(([n, label, color]) => { const box = document.createElement('div'); box.style.cssText = 'background:#f1f5f9;border-radius:8px;padding:8px;text-align:center'; const num = document.createElement('div'); num.style.cssText = 'font-size:22px;font-weight:800;color:' + color; num.textContent = n; const lab = document.createElement('div'); lab.style.cssText = 'font-size:11px;color:#64748b'; lab.textContent = label; box.append(num, lab); metrics.append(box) }); weeklySummary.append(metrics); const coachTitle = document.createElement('div'); coachTitle.style.cssText = 'font-weight:700;margin-bottom:7px'; coachTitle.textContent = 'Cours affectés par coach'; weeklySummary.append(coachTitle); const coachRows = document.createElement('div'); coachRows.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px'; coaches.forEach(coach => { const count = series.filter(c => assignmentFor(c).includes(coach.id)).length; const row = document.createElement('div'); row.style.cssText = 'min-width:0'; const line = document.createElement('div'); line.style.cssText = 'display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px'; const name = document.createElement('span'); name.textContent = coach.name; const num = document.createElement('strong'); num.textContent = count + ' cours'; line.append(name, num); const track = document.createElement('div'); track.style.cssText = 'height:6px;background:#e2e8f0;border-radius:8px;overflow:hidden'; const bar = document.createElement('div'); bar.style.cssText = 'height:100%;background:' + (colors[coach.name] || '#16804a') + ';width:' + (assignedTotal ? count / Math.max(1, ...coaches.map(co => series.filter(c => assignmentFor(c).includes(co.id)).length)) * 100 : 0) + '%;border-radius:8px'; track.append(bar); row.append(line, track); coachRows.append(row) }); weeklySummary.append(coachRows) } $('hint').textContent = view === 'coach' ? `Semaine du ${currentWeek} · Mode ${active} : cliquez sur un cours pour modifier votre disponibilité. Les réponses des autres coachs restent visibles.` : 'Vue complète : réponses de tous les coachs. Choisissez un coach pour modifier sa réponse.'; $('weekTitle').textContent = 'Semaine du ' + currentWeek; const board = $('board'); board.innerHTML = ''; days.forEach((day, i) => {
     const col = document.createElement('section'); col.className = 'day'; const dayHeading = document.createElement('h2'); dayHeading.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap'; const dayLabel = document.createElement('span'); dayLabel.innerHTML = `${day} <span style="font-weight:500;color:#64748b">${dateFr(plusDays(currentWeek, i))}</span>`; dayHeading.append(dayLabel);
     const dayDateForAlerts = plusDays(currentWeek, i);
+    const dayCancellationReason = getDayCancellationReason(dayDateForAlerts);
     const alertItems = series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDateForAlerts).map(course => {
       const ex = exceptions.find(e => e.series_id === course.id && e.occurrence_date === course.occurrence_date);
       const assignedIds = getAssignedIds(ex?.overrides);
@@ -207,7 +212,31 @@ function render() {
       alertWrap.append(icon, alertPopup);
       dayHeading.append(alertWrap);
     }
-    if (view === 'all') { const dayDate = plusDays(currentWeek, i); const dayCourses = series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate); const dayAssigned = dayCourses.filter(x => { const e = exceptions.find(z => z.series_id === x.id && z.occurrence_date === x.occurrence_date); return getAssignedIds(e?.overrides).length > 0 }).length; const daily = document.createElement('span'); daily.style.cssText = 'font-size:11px;font-weight:800;color:' + (dayAssigned === dayCourses.length ? '#166534' : '#475569') + ';background:#f1f5f9;border-radius:6px;padding:4px 6px;white-space:nowrap'; daily.textContent = dayAssigned + ' / ' + dayCourses.length; daily.title = dayAssigned + ' cours affectés sur ' + dayCourses.length + ' cours'; dayHeading.append(daily) } if (view === 'coach') { const dayDate = plusDays(currentWeek, i); const selected = coaches.find(x => x.name === active); const assignedCount = selected ? series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate).filter(x => { const ex = exceptions.find(e => e.series_id === x.id && e.occurrence_date === x.occurrence_date); return getAssignedIds(ex?.overrides).includes(selected.id) }).length : 0; const counter = document.createElement('span'); counter.style.cssText = 'font-size:11px;font-weight:800;color:#166534;background:#d9f7e5;border-radius:6px;padding:4px 6px;white-space:nowrap'; counter.textContent = '★ ' + assignedCount; counter.title = assignedCount + ' cours attribué(s) à ce coach ce jour'; dayHeading.append(counter) } col.append(dayHeading); series.filter(c => c.weekday === i + 1).sort((a, b) => String(a.display_time).localeCompare(String(b.display_time))).forEach(c => {
+    if (view === 'manage') {
+      const dayCoursesForDelete = series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDateForAlerts);
+      if (dayCoursesForDelete.length) {
+        const deleteDay = document.createElement('button');
+        deleteDay.type = 'button';
+        deleteDay.textContent = '×';
+        deleteDay.title = 'Annuler tous les cours de cette journée';
+        deleteDay.setAttribute('aria-label', 'Annuler tous les cours du ' + day + ' ' + dateFr(dayDateForAlerts));
+        deleteDay.style.cssText = 'padding:1px 6px;color:#9c2525;font-size:16px;line-height:1';
+        deleteDay.onclick = () => cancelDayOccurrences(dayDateForAlerts, i + 1);
+        dayHeading.append(deleteDay);
+      }
+    }
+    if (view === 'all') { const dayDate = plusDays(currentWeek, i); const dayCourses = series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate); const dayAssigned = dayCourses.filter(x => { const e = exceptions.find(z => z.series_id === x.id && z.occurrence_date === x.occurrence_date); return getAssignedIds(e?.overrides).length > 0 }).length; const daily = document.createElement('span'); daily.style.cssText = 'font-size:11px;font-weight:800;color:' + (dayAssigned === dayCourses.length ? '#166534' : '#475569') + ';background:#f1f5f9;border-radius:6px;padding:4px 6px;white-space:nowrap'; daily.textContent = dayCancellationReason ? '0 cours' : dayAssigned + ' / ' + dayCourses.length; daily.title = dayCancellationReason ? 'Journée sans cours : ' + dayCancellationReason : dayAssigned + ' cours affectés sur ' + dayCourses.length + ' cours'; dayHeading.append(daily) } if (view === 'coach') { const dayDate = plusDays(currentWeek, i); const selected = coaches.find(x => x.name === active); const assignedCount = selected ? series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate).filter(x => { const ex = exceptions.find(e => e.series_id === x.id && e.occurrence_date === x.occurrence_date); return getAssignedIds(ex?.overrides).includes(selected.id) }).length : 0; const counter = document.createElement('span'); counter.style.cssText = 'font-size:11px;font-weight:800;color:#166534;background:#d9f7e5;border-radius:6px;padding:4px 6px;white-space:nowrap'; counter.textContent = dayCancellationReason ? '0 cours' : '★ ' + assignedCount; counter.title = dayCancellationReason ? 'Journée sans cours : ' + dayCancellationReason : assignedCount + ' cours attribué(s) à ce coach ce jour'; dayHeading.append(counter) } col.append(dayHeading);
+    if (dayCancellationReason && view !== 'manage') {
+      const dayNotice = document.createElement('div');
+      dayNotice.style.cssText = 'margin:6px 0 9px;padding:9px 11px;border:1px solid #f0d7a1;border-radius:8px;background:#fff8e8;color:#7c4a03;font-size:12px;line-height:1.45';
+      const reasonTitle = document.createElement('strong');
+      reasonTitle.textContent = 'Pas de cours car : ';
+      const reasonText = document.createElement('span');
+      reasonText.textContent = dayCancellationReason;
+      dayNotice.append(reasonTitle, reasonText);
+      col.append(dayNotice);
+    }
+    series.filter(c => c.weekday === i + 1).sort((a, b) => String(a.display_time).localeCompare(String(b.display_time))).forEach(c => {
       const card = document.createElement('article'); card.className = 'class'; const occurrenceException = exceptions.find(x => x.series_id === c.id && x.occurrence_date === c.occurrence_date); const occurrenceOverrides = occurrenceException?.overrides && typeof occurrenceException.overrides === 'object' ? occurrenceException.overrides : {}; const assignedCoachIds = getAssignedIds(occurrenceOverrides); const assignedCoachId = assignedCoachIds[0] || null; const assignedCoaches = coaches.filter(x => assignedCoachIds.includes(x.id)); const assignedCoach = assignedCoaches[0]; const selectedCoach = coaches.find(x => x.name === active); if (view === 'coach' && selectedCoach && assignedCoachIds.includes(selectedCoach.id)) { card.classList.add('assigned-to-me') } if ((view === 'all' && assignedCoachIds.length) || (view === 'coach' && selectedCoach && assignedCoachIds.includes(selectedCoach.id))) { const activeAssignedCoach = coaches.find(x => x.name === active && assignedCoachIds.includes(x.id)); const coachForColor = activeAssignedCoach || (view === 'coach' ? selectedCoach : assignedCoach); const assignedStatus = coachForColor ? getStatus(c, coachForColor) : ''; const borderColor = assignedStatus === 'Disponible' ? '#16804a' : assignedStatus === 'Indisponible' ? '#dc2626' : assignedStatus === 'À confirmer' ? '#eab308' : '#9ca3af'; card.style.border = '3px solid ' + borderColor; card.style.background = assignedStatus === 'Disponible' ? '#f0fbf4' : 'white' } const head = document.createElement('div'); head.className = 'classhead'; const name = document.createElement('span'); name.className = 'name'; name.textContent = c.display_name; const right = document.createElement('span'); right.style.cssText = 'display:flex;align-items:start;gap:5px'; const time = document.createElement('span'); time.className = 'time'; time.textContent = String(c.display_time).slice(0, 5); right.append(time); if (view === 'manage') { name.title = 'Cliquer pour modifier uniquement le nom du cours'; name.style.cursor = 'pointer'; name.onclick = () => editCourseField(c, 'name'); time.title = 'Cliquer pour modifier uniquement l’heure'; time.style.cursor = 'pointer'; time.onclick = () => editCourseField(c, 'time'); const duration = document.createElement('span'); duration.className = 'time'; duration.textContent = (Number(c.duration_minutes) || 60) >= 60 ? ((Number(c.duration_minutes) || 60) % 60 ? Math.floor((Number(c.duration_minutes) || 60) / 60) + ' h ' + ((Number(c.duration_minutes) || 60) % 60) + ' min' : ((Number(c.duration_minutes) || 60) / 60) + ' h') : (Number(c.duration_minutes) || 60) + ' min'; duration.title = 'Cliquer pour modifier uniquement la durée'; duration.style.cursor = 'pointer'; duration.onclick = () => editCourseField(c, 'duration'); right.append(duration); const edit = document.createElement('button'); edit.textContent = '✎'; edit.title = 'Modifier le nom, la date, l’heure, la durée ou la récurrence'; edit.setAttribute('aria-label', 'Modifier le cours'); edit.style.cssText = 'padding:2px 6px;font-size:15px;line-height:1'; edit.onclick = () => editCourseSeries(c); right.append(edit); const del = document.createElement('button'); del.textContent = '×'; del.title = 'Supprimer cette occurrence ou cette occurrence et les suivantes'; del.style.cssText = 'padding:1px 6px;color:#9c2525;font-size:16px;line-height:1'; del.onclick = () => deleteOccurrence(c); right.append(del) } head.append(name, right); card.append(head); if (view === 'coach') {
         const coach = coaches.find(x => x.name === active), st = coach ? getStatus(c, coach) : ''; const responseButtons = document.createElement('div'); responseButtons.style.cssText = 'display:flex;gap:6px;margin-top:6px';[{ status: 'Disponible', icon: '✓', title: 'Disponible' }, { status: 'Indisponible', icon: '✕', title: 'Indisponible' }, { status: 'À confirmer', icon: '?', title: 'À confirmer' }].forEach(option => { const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'slot ' + cls(st); btn.textContent = option.icon; btn.title = option.title; btn.setAttribute('aria-label', option.title); btn.style.cssText = 'flex:1;width:auto;margin-top:0;text-align:center;font-size:17px;font-weight:800;padding:7px 4px;border-width:' + (st === option.status ? '2px' : '1px') + ';border-color:' + (st === option.status ? 'currentColor' : 'var(--line)') + ';opacity:' + (st && st !== option.status ? '.55' : '1'); btn.onclick = () => coach && setStatus(c, coach, option.status); responseButtons.append(btn) }); card.append(responseButtons); if (coach && assignedCoachIds.includes(coach.id)) {
           const withNames = assignedCoaches.filter(x => x.id !== coach.id).map(x => x.name); const taskRow = document.createElement('div'); taskRow.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px'; const badge = document.createElement('div'); badge.className = 'tag'; badge.textContent = '★ Cours à animer'; badge.style.cssText = 'display:inline-block;background:#d9f7e5;color:#166534;font-weight:800'; const agenda = document.createElement('button'); agenda.type = 'button'; agenda.textContent = '🗓'; agenda.title = 'Ajouter ce cours à Google Agenda'; agenda.setAttribute('aria-label', 'Ajouter ce cours à Google Agenda'); agenda.style.cssText = 'border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:3px 7px;cursor:pointer;font-size:15px;line-height:1.2'; agenda.onclick = () => { const date = String(c.occurrence_date || ''); const time = String(c.display_time || '').slice(0, 5); if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) { notice('Date ou heure du cours invalide.'); return } const start = date.replace(/-/g, '') + 'T' + time.replace(':', '') + '00'; const endDate = new Date(date + 'T' + time + ':00'); endDate.setMinutes(endDate.getMinutes() + (Number(c.duration_minutes) || 60)); const end = endDate.getFullYear() + String(endDate.getMonth() + 1).padStart(2, '0') + String(endDate.getDate()).padStart(2, '0') + 'T' + String(endDate.getHours()).padStart(2, '0') + String(endDate.getMinutes()).padStart(2, '0') + '00'; const url = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(c.display_name) + '&dates=' + start + '/' + end + '&ctz=Europe%2FParis'; window.open(url, '_blank', 'noopener,noreferrer') }; taskRow.append(badge); if (withNames.length) { const withText = document.createElement('span'); withText.style.cssText = 'font-size:11px;color:#475569'; withText.textContent = 'avec ' + withNames.join(', '); taskRow.append(withText) } taskRow.append(agenda); card.append(taskRow)
@@ -340,6 +369,61 @@ function render() {
     renderCoachManager();
   }
 }
+async function cancelDayOccurrences(dayDate, weekday) {
+  const dayCourses = series
+    .filter(course => course.weekday === weekday && course.occurrence_date === dayDate)
+    .sort((a, b) => String(a.display_time).localeCompare(String(b.display_time)));
+
+  if (!dayCourses.length) return notice('Aucun cours à annuler pour cette journée.');
+
+  const reasonInput = prompt(
+    'Pourquoi aucun cours ne sera-t-il assuré le ' + dateFr(dayDate) + ' ?',
+    'Jour férié'
+  );
+  if (reasonInput === null) return;
+  const reason = reasonInput.trim();
+  if (!reason) return notice('Veuillez saisir le motif de fermeture.');
+
+  const courseList = dayCourses
+    .map(course => '• ' + String(course.display_time || course.start_time).slice(0, 5) + ' – ' + (course.display_name || course.course_name))
+    .join('\n');
+  const confirmation =
+    'Confirmer l’annulation de TOUS les ' + dayCourses.length + ' cours du ' + dateFr(dayDate) + ' ?\n\n' +
+    courseList + '\n\nMotif : ' + reason + '\n\nCette annulation concerne uniquement cette date. Les cours des semaines suivantes seront conservés.';
+  if (!confirm(confirmation)) return;
+
+  const payload = dayCourses.map(course => {
+    const existing = exceptions.find(e => e.series_id === course.id && e.occurrence_date === dayDate);
+    const overrides = { ...(existing?.overrides || {}), cancellation_reason: reason };
+    return {
+      series_id: course.id,
+      occurrence_date: dayDate,
+      is_cancelled: true,
+      overrides,
+      created_by: session.user.id
+    };
+  });
+
+  const { error } = await db
+    .from('course_occurrence_exceptions')
+    .upsert(payload, { onConflict: 'series_id,occurrence_date' });
+  if (error) return notice('Annulation des cours impossible : ' + error.message);
+
+  // Les réponses de disponibilité de cette date ne sont plus pertinentes.
+  const { error: availabilityError } = await db
+    .from('coach_availability')
+    .delete()
+    .eq('occurrence_date', dayDate)
+    .in('series_id', dayCourses.map(course => course.id));
+  if (availabilityError) {
+    notice('Les cours ont été annulés, mais certaines disponibilités n’ont pas pu être effacées : ' + availabilityError.message);
+  }
+
+  await loadWeek();
+  render();
+  notice(dayCourses.length + ' cours annulé(s) pour le ' + dateFr(dayDate) + '. Motif : ' + reason);
+}
+
 async function editCourseField(c, field) {
   const s = series.find(x => x.id === c.id); if (!s) return notice('Cours introuvable. Actualisez la page et réessayez.');
   let value, updates = {}, overrideKey = null, label = '';
