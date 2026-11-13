@@ -556,14 +556,24 @@ async function renderCoachManager() {
       if (coachError)
         return notice('Modification du nom impossible : ' + coachError.message);
       let accessResult;
-      if (member)
-        accessResult = await db.from('team_members').update({ email, display_name: name }).eq('coach_id', c.id);
-      else
-        accessResult = await db.from('team_members').insert({ email, display_name: name, active: !!c.active, coach_id: c.id, role: 'coach' });
-      if (accessResult.error)
-        return notice('Le nom a été modifié, mais l’adresse e-mail n’a pas pu être enregistrée : ' + accessResult.error.message);
-      await loadBase();
-      render();
+      if (member) {
+          accessResult = await db.from('team_members').update({ email, display_name: name }).eq('coach_id', c.id);
+      } else {
+          accessResult = await db.from('team_members').insert({ email, display_name: name, active: !!c.active, coach_id: c.id, role: 'coach' });
+      }
+
+      if (accessResult.error) return notice('Le nom a été modifié, mais l’adresse e-mail n’a pas pu être enregistrée : ' + accessResult.error.message);
+
+      // Si le coach modifié est celui actuellement connecté et que son e-mail a changé
+      if (session && member && member.email !== email) {
+          await db.auth.signOut();
+          notice('Votre adresse e-mail a été modifiée. Veuillez vous reconnecter avec votre nouvelle adresse.');
+          location.reload();
+          return;
+      }
+
+      await loadBase(); 
+      render(); 
       notice('Nom et adresse e-mail mis à jour.');
     };
     wrap.append(info, edit);
