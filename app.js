@@ -226,13 +226,16 @@ function render() {
       }
     }
     if (view === 'all') { const dayDate = plusDays(currentWeek, i); const dayCourses = series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate); const dayAssigned = dayCourses.filter(x => { const e = exceptions.find(z => z.series_id === x.id && z.occurrence_date === x.occurrence_date); return getAssignedIds(e?.overrides).length > 0 }).length; const daily = document.createElement('span'); daily.style.cssText = 'font-size:11px;font-weight:800;color:' + (dayAssigned === dayCourses.length ? '#166534' : '#475569') + ';background:#f1f5f9;border-radius:6px;padding:4px 6px;white-space:nowrap'; daily.textContent = dayCancellationReason ? '0 cours' : dayAssigned + ' / ' + dayCourses.length; daily.title = dayCancellationReason ? 'Journée sans cours : ' + dayCancellationReason : dayAssigned + ' cours affectés sur ' + dayCourses.length + ' cours'; dayHeading.append(daily) } if (view === 'coach') { const dayDate = plusDays(currentWeek, i); const selected = coaches.find(x => x.name === active); const assignedCount = selected ? series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate).filter(x => { const ex = exceptions.find(e => e.series_id === x.id && e.occurrence_date === x.occurrence_date); return getAssignedIds(ex?.overrides).includes(selected.id) }).length : 0; const counter = document.createElement('span'); counter.style.cssText = 'font-size:11px;font-weight:800;color:#166534;background:#d9f7e5;border-radius:6px;padding:4px 6px;white-space:nowrap'; counter.textContent = dayCancellationReason ? '0 cours' : '★ ' + assignedCount; counter.title = dayCancellationReason ? 'Journée sans cours : ' + dayCancellationReason : assignedCount + ' cours attribué(s) à ce coach ce jour'; dayHeading.append(counter) } col.append(dayHeading);
-    if (dayCancellationReason && view !== 'manage') {
+    if (dayCancellationReason) {
       const dayNotice = document.createElement('div');
       dayNotice.style.cssText = 'margin:6px 0 9px;padding:9px 11px;border:1px solid #f0d7a1;border-radius:8px;background:#fff8e8;color:#7c4a03;font-size:12px;line-height:1.45';
+
       const reasonTitle = document.createElement('strong');
       reasonTitle.textContent = 'Pas de cours car : ';
+
       const reasonText = document.createElement('span');
       reasonText.textContent = dayCancellationReason;
+
       dayNotice.append(reasonTitle, reasonText);
       col.append(dayNotice);
     }
