@@ -435,19 +435,35 @@ async function renderCoachManager() {
     const edit = document.createElement('button');
     edit.textContent = 'Modifier';
     edit.onclick = async () => {
-      const n = prompt('Nom du coach :', c.name); if (n === null) return;
-      const name = n.trim(); if (!name) return notice('Le nom ne peut pas être vide.');
-      if ((allCoaches || []).some(x => x.name.toLowerCase() === name.toLowerCase() && x.id !== c.id)) return notice('Ce nom existe déjà.');
-      const e = prompt('Adresse e-mail du coach :', member?.email || ''); if (e === null) return;
-      const email = e.trim().toLowerCase(); if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return notice('Saisissez une adresse e-mail valide.');
-      if ((members || []).some(m => m.email.toLowerCase() === email && m.coach_id !== c.id && m.active)) return notice('Cette adresse e-mail est déjà associée à un autre profil actif.');
+      const n = prompt('Nom du coach :', c.name); 
+      if (n === null) 
+        return;
+      const name = n.trim(); 
+      if (!name) 
+        return notice('Le nom ne peut pas être vide.');
+      if ((allCoaches || []).some(x => x.name.toLowerCase() === name.toLowerCase() && x.id !== c.id)) 
+        return notice('Ce nom existe déjà.');
+      const e = prompt('Adresse e-mail du coach :', member?.email || ''); 
+      if (e === null) 
+        return;
+      const email = e.trim().toLowerCase(); 
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) 
+        return notice('Saisissez une adresse e-mail valide.');      
+      if ((members || []).some(m => m.email.toLowerCase() === email && m.coach_id !== c.id && m.active)) 
+        return notice('Cette adresse e-mail est déjà associée à un autre profil actif.');
       const { error: coachError } = await db.from('coaches').update({ name, updated_at: new Date().toISOString() }).eq('id', c.id);
-      if (coachError) return notice('Modification du nom impossible : ' + coachError.message);
+      if (coachError) 
+        return notice('Modification du nom impossible : ' + coachError.message);
       let accessResult;
-      if (member) accessResult = await db.from('team_members').update({ email, display_name: name }).eq('coach_id', c.id);
-      else accessResult = await db.from('team_members').insert({ email, display_name: name, active: !!c.active, coach_id: c.id, role: 'coach' });
-      if (accessResult.error) return notice('Le nom a été modifié, mais l’adresse e-mail n’a pas pu être enregistrée : ' + accessResult.error.message);
-      await loadBase(); render(); notice('Nom et adresse e-mail mis à jour.');
+      if (member) 
+        accessResult = await db.from('team_members').update({ email, display_name: name }).eq('coach_id', c.id);
+      else 
+        accessResult = await db.from('team_members').insert({ email, display_name: name, active: !!c.active, coach_id: c.id, role: 'coach' });
+      if (accessResult.error) 
+        return notice('Le nom a été modifié, mais l’adresse e-mail n’a pas pu être enregistrée : ' + accessResult.error.message);
+      await loadBase(); 
+      render(); 
+      notice('Nom et adresse e-mail mis à jour.');
     };
     wrap.append(info, edit);
     if (c.active) {
