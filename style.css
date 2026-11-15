@@ -266,6 +266,28 @@ button {
   flex: 0 0 auto
 }
 
+
+/* Cours annulés : conservés mais visuellement différenciés */
+.class.cancelled-course {
+    background: #f1f2f4;
+    border: 1px dashed #b5bac3 !important;
+    opacity: 0.72;
+    box-shadow: none;
+}
+
+.class.cancelled-course .name,
+.class.cancelled-course .time {
+    color: #737b87;
+}
+
+.class.cancelled-course .name {
+    text-decoration: line-through;
+}
+
+.class.cancelled-course .classhead {
+    opacity: 0.9;
+}
+
 .name {
   font-weight: 750;
   font-size: 12px;

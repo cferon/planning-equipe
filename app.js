@@ -315,75 +315,99 @@ async function loadWeek() {
     const loadVersion = ++weekLoadVersion;
     const week = currentWeek;
     const end = plusDays(week, 5);
+
     const { data, error } = await db
         .from('course_series')
         .select('*')
         .eq('active', true)
         .lte('start_date', end)
         .or('end_date.is.null,end_date.gte.' + week);
-    if (loadVersion !== weekLoadVersion || week !== currentWeek)
-        return;
+
+    if (loadVersion !== weekLoadVersion || week !== currentWeek) return;
+
     if (error) {
         notice('Erreur de chargement des cours : ' + error.message);
         return;
     }
-    // On conserve les doublons : ils peuvent être volontaires.
-    let nextSeries = (data || []).filter(s => s.weekday >= 1 && s.weekday <= 6);
+
+    let nextSeries = (data || []).filter(
+        s => s.weekday >= 1 && s.weekday <= 6
+    );
+
     const ex = await db
         .from('course_occurrence_exceptions')
         .select('*')
         .gte('occurrence_date', week)
         .lte('occurrence_date', end);
-    if (loadVersion !== weekLoadVersion || week !== currentWeek)
-        return;
+
+    if (loadVersion !== weekLoadVersion || week !== currentWeek) return;
+
     if (ex.error) {
         notice('Erreur de chargement des exceptions : ' + ex.error.message);
         return;
     }
+
     const nextExceptions = ex.data || [];
-    // Chargement des motifs de fermeture indépendamment des cours.
+
     const closures = await db
         .from('course_day_closures')
         .select('*')
         .gte('occurrence_date', week)
         .lte('occurrence_date', end);
-    if (loadVersion !== weekLoadVersion || week !== currentWeek)
-        return;
+
+    if (loadVersion !== weekLoadVersion || week !== currentWeek) return;
+
     if (closures.error) {
         notice('Erreur de chargement des fermetures : ' + closures.error.message);
         return;
     }
+
     const nextClosures = closures.data || [];
+
+    // On conserve toutes les occurrences, même celles qui sont annulées.
     nextSeries = nextSeries
         .filter(s => {
-        const d = plusDays(week, s.weekday - 1);
-        return d >= s.start_date &&
-            (!s.end_date || d <= s.end_date) &&
-            !nextExceptions.some(x => x.series_id === s.id &&
-                x.occurrence_date === d &&
-                x.is_cancelled);
-    })
+            const d = plusDays(week, s.weekday - 1);
+
+            return d >= s.start_date &&
+                (!s.end_date || d <= s.end_date);
+        })
         .map(s => {
-        const d = plusDays(week, s.weekday - 1);
-        const x = nextExceptions.find(x => x.series_id === s.id && x.occurrence_date === d);
-        return {
-            ...s,
-            occurrence_date: d,
-            display_name: x?.overrides?.override_course_name || x?.override_course_name || s.course_name,
-            display_time: x?.overrides?.override_start_time || x?.override_start_time || s.start_time
-        };
-    });
+            const d = plusDays(week, s.weekday - 1);
+
+            const x = nextExceptions.find(x =>
+                x.series_id === s.id &&
+                x.occurrence_date === d
+            );
+
+            return {
+                ...s,
+                occurrence_date: d,
+                is_cancelled: !!x?.is_cancelled,
+                display_name:
+                    x?.overrides?.override_course_name ||
+                    x?.override_course_name ||
+                    s.course_name,
+                display_time:
+                    x?.overrides?.override_start_time ||
+                    x?.override_start_time ||
+                    s.start_time
+            };
+        });
+
     const av = await db
         .from('coach_availability')
         .select('*')
         .gte('occurrence_date', week)
         .lte('occurrence_date', end);
-    if (loadVersion !== weekLoadVersion || week !== currentWeek)
-        return;
+
+    if (loadVersion !== weekLoadVersion || week !== currentWeek) return;
+
     if (av.error) {
         notice('Erreur de chargement des disponibilités : ' + av.error.message);
         return;
     }
+
     series = nextSeries;
     exceptions = nextExceptions;
     dayClosures = nextClosures;
@@ -462,7 +486,7 @@ function render() {
     }
     if (!isAdmin && view !== 'coach')
         view = 'coach';
-    (isAdmin ? coaches : coaches.filter(c => c.id === currentMember?.coach_id)).forEach(c => {
+        (isAdmin ? coaches : coaches.filter(c => c.id === currentMember?.coach_id)).forEach(c => {
         const b = document.createElement('button');
         b.className = 'coach-btn' + (view === 'coach' && active === c.name ? ' active' : '');
         b.innerHTML = `<span class="dot" style="background:${colors[c.name] || '#64748b'}"></span>${c.name}`;
@@ -473,7 +497,15 @@ function render() {
         };
         tabs.append(b);
     });
-    const managing = view === 'manage';
+    const managing = view === 'manage'; 
+
+    // Le panneau de création de cours est visible uniquement en gestion.
+    $('courseManager').classList.toggle('hidden', !managing);
+
+    // Les cours annulés restent visibles uniquement dans la gestion.
+    const displayedSeries = series.filter(course =>
+        managing || !course.is_cancelled
+    );
     $('allView').textContent = 'Vue complète';
     $('coachTabs').classList.remove('hidden');
     $('hint').classList.toggle('hidden', managing);
@@ -485,8 +517,8 @@ function render() {
             const e = exceptions.find(x => x.series_id === c.id && x.occurrence_date === c.occurrence_date);
             return getAssignedIds(e?.overrides);
         };
-        const assignedTotal = series.filter(c => assignmentFor(c).length).length;
-        const total = series.length;
+        const assignedTotal = displayedSeries.filter(c => assignmentFor(c).length).length;
+        const total = displayedSeries.length;
         const unassigned = total - assignedTotal;
         weeklySummary.innerHTML = '';
         const title = document.createElement('strong');
@@ -514,7 +546,7 @@ function render() {
         const coachRows = document.createElement('div');
         coachRows.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px';
         coaches.forEach(coach => {
-            const count = series.filter(c => assignmentFor(c).includes(coach.id)).length;
+            const count = displayedSeries.filter(c => assignmentFor(c).includes(coach.id)).length;
             const row = document.createElement('div');
             row.style.cssText = 'min-width:0';
             const line = document.createElement('div');
@@ -527,7 +559,7 @@ function render() {
             const track = document.createElement('div');
             track.style.cssText = 'height:6px;background:#e2e8f0;border-radius:8px;overflow:hidden';
             const bar = document.createElement('div');
-            bar.style.cssText = 'height:100%;background:' + (colors[coach.name] || '#16804a') + ';width:' + (assignedTotal ? count / Math.max(1, ...coaches.map(co => series.filter(c => assignmentFor(c).includes(co.id)).length)) * 100 : 0) + '%;border-radius:8px';
+            bar.style.cssText = 'height:100%;background:' + (colors[coach.name] || '#16804a') + ';width:' + (assignedTotal ? count / Math.max(1, ...coaches.map(co => displayedSeries.filter(c => assignmentFor(c).includes(co.id)).length)) * 100 : 0) + '%;border-radius:8px';
             track.append(bar);
             row.append(line, track);
             coachRows.append(row);
@@ -550,8 +582,14 @@ function render() {
         dayHeading.append(dayLabel);
         const dayDateForAlerts = plusDays(currentWeek, i);
         const dayCancellationReason = getDayCancellationReason(dayDateForAlerts);
-        const alertItems = series
-            .filter(x => x.weekday === i + 1 && x.occurrence_date === dayDateForAlerts)
+        const alertItems = dayCancellationReason
+            ? []
+            : series
+                .filter(x =>
+                    !x.is_cancelled &&
+                    x.weekday === i + 1 &&
+                    x.occurrence_date === dayDateForAlerts
+                )
             .map(course => {
             const ex = exceptions.find(e => e.series_id === course.id && e.occurrence_date === course.occurrence_date);
             const assignedIds = getAssignedIds(ex?.overrides);
@@ -641,23 +679,61 @@ function render() {
             alertWrap.append(icon, alertPopup);
             dayHeading.append(alertWrap);
         }
+        
         if (view === 'manage') {
-            const dayCoursesForDelete = series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDateForAlerts);
-            if (dayCoursesForDelete.length) {
+            const dayCoursesForDelete = displayedSeries.filter(x =>
+                x.weekday === i + 1 &&
+                x.occurrence_date === dayDateForAlerts
+            );
+
+            const hasCancelledCourses = dayCoursesForDelete.some(
+                x => x.is_cancelled
+            );
+
+            const activeDayCourses = dayCoursesForDelete.filter(
+                x => !x.is_cancelled
+            );
+
+            if (hasCancelledCourses) {
+                const restoreDay = document.createElement('button');
+                restoreDay.type = 'button';
+                restoreDay.textContent = '↻';
+                restoreDay.title = 'Restaurer les cours annulés de cette journée';
+                restoreDay.setAttribute(
+                    'aria-label',
+                    'Restaurer les cours annulés du ' + day + ' ' + dateFr(dayDateForAlerts)
+                );
+                restoreDay.style.cssText =
+                    'padding:1px 6px;color:#16804a;font-size:19px;font-weight:800;line-height:1';
+
+                restoreDay.onclick = () =>
+                    restoreDayOccurrences(dayDateForAlerts, i + 1);
+
+                dayHeading.append(restoreDay);
+
+            } else if (activeDayCourses.length) {
                 const deleteDay = document.createElement('button');
                 deleteDay.type = 'button';
                 deleteDay.textContent = '×';
                 deleteDay.title = 'Annuler tous les cours de cette journée';
-                deleteDay.setAttribute('aria-label', 'Annuler tous les cours du ' + day + ' ' + dateFr(dayDateForAlerts));
-                deleteDay.style.cssText = 'padding:1px 6px;color:#9c2525;font-size:16px;line-height:1';
-                deleteDay.onclick = () => cancelDayOccurrences(dayDateForAlerts, i + 1);
+                deleteDay.setAttribute(
+                    'aria-label',
+                    'Annuler tous les cours du ' + day + ' ' + dateFr(dayDateForAlerts)
+                );
+                deleteDay.style.cssText =
+                    'padding:1px 6px;color:#9c2525;font-size:16px;line-height:1';
+
+                deleteDay.onclick = () =>
+                    cancelDayOccurrences(dayDateForAlerts, i + 1);
+
                 dayHeading.append(deleteDay);
             }
         }
+
         // Compteur de la Vue complète : indépendant du compteur Coach
         if (view === 'all' && !dayCancellationReason) {
             const dayDate = plusDays(currentWeek, i);
-            const dayCourses = series.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate);
+            const dayCourses = displayedSeries.filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate);
             const dayAssigned = dayCourses.filter(x => {
                 const e = exceptions.find(z => z.series_id === x.id && z.occurrence_date === x.occurrence_date);
                 return getAssignedIds(e?.overrides).length > 0;
@@ -673,7 +749,7 @@ function render() {
             const dayDate = plusDays(currentWeek, i);
             const selected = coaches.find(x => x.name === active);
             const assignedCount = selected
-                ? series
+                ? displayedSeries
                     .filter(x => x.weekday === i + 1 && x.occurrence_date === dayDate)
                     .filter(x => {
                     const ex = exceptions.find(e => e.series_id === x.id && e.occurrence_date === x.occurrence_date);
@@ -699,12 +775,18 @@ function render() {
             dayNotice.append(reasonTitle, reasonText);
             col.append(dayNotice);
         }
-        series
-            .filter(c => c.weekday === i + 1)
+        displayedSeries
+            .filter(c =>
+                c.weekday === i + 1 &&
+                c.occurrence_date === dayDateForAlerts
+            )
             .sort((a, b) => String(a.display_time).localeCompare(String(b.display_time)))
             .forEach(c => {
             const card = document.createElement('article');
             card.className = 'class';
+            if (c.is_cancelled) {
+                card.classList.add('cancelled-course');
+            }
             const occurrenceException = exceptions.find(x => x.series_id === c.id && x.occurrence_date === c.occurrence_date);
             const occurrenceOverrides = occurrenceException?.overrides && typeof occurrenceException.overrides === 'object'
                 ? occurrenceException.overrides
@@ -743,7 +825,15 @@ function render() {
             time.className = 'time';
             time.textContent = String(c.display_time).slice(0, 5);
             right.append(time);
-            if (view === 'manage') {
+            if (view === 'manage' && c.is_cancelled) {
+                const cancelledBadge = document.createElement('span');
+                cancelledBadge.textContent = 'Annulé';
+                cancelledBadge.style.cssText =
+                    'font-size:10px;font-weight:800;color:#991b1b;background:#fee2e2;border-radius:5px;padding:3px 6px;white-space:nowrap';
+
+                right.append(cancelledBadge);
+            }
+            if (view === 'manage' && !c.is_cancelled) {
                 name.title = 'Cliquer pour modifier uniquement le nom du cours';
                 name.style.cursor = 'pointer';
                 name.onclick = () => editCourseField(c, 'name');
@@ -777,7 +867,7 @@ function render() {
             }
             head.append(name, right);
             card.append(head);
-            if (view === 'coach') {
+            if (view === 'coach' && !c.is_cancelled) {
                 const coach = coaches.find(x => x.name === active);
                 const st = coach ? getStatus(c, coach) : '';
                 const responseButtons = document.createElement('div');
@@ -981,39 +1071,56 @@ function render() {
         board.append(col);
     });
     $('summary').textContent = managing
-        ? `${series.length} cours affichés · Gestion des cours`
-        : `${series.length} cours affichés · ${availability.filter(a => a.status === 'Disponible' && a.occurrence_date >= currentWeek && a.occurrence_date <= plusDays(currentWeek, 5)).length} réponses « Disponible »`;
+        ? `${displayedSeries.length} cours affichés · Gestion des cours`
+        : `${displayedSeries.length} cours affichés · ${availability.filter(a => a.status === 'Disponible' && a.occurrence_date >= currentWeek && a.occurrence_date <= plusDays(currentWeek, 5)).length} réponses « Disponible »`;
     if (!$('coachManager').classList.contains('hidden')) {
         renderCoachManager();
     }
 }
 // ============================================================================
-// 8. ANNULATION DE TOUS LES COURS D’UNE JOURNÉE
+// 8. ANNULATION ET RESTAURATION DE TOUS LES COURS D’UNE JOURNÉE
 // Les séries récurrentes sont conservées ; les cours ponctuels sont supprimés.
 // Le motif de fermeture est enregistré séparément des exceptions de cours.
 // ============================================================================
 async function cancelDayOccurrences(dayDate, weekday) {
     const dayCourses = series
-        .filter(course => course.weekday === weekday &&
-        course.occurrence_date === dayDate)
-        .sort((a, b) => String(a.display_time).localeCompare(String(b.display_time)));
+        .filter(course =>
+            course.weekday === weekday &&
+            course.occurrence_date === dayDate &&
+            !course.is_cancelled
+        )
+        .sort((a, b) =>
+            String(a.display_time).localeCompare(String(b.display_time))
+        );
+
     if (!dayCourses.length) {
-        return notice('Aucun cours à annuler pour cette journée.');
+        return notice('Aucun cours actif à annuler pour cette journée.');
     }
-    const reasonInput = prompt('Pourquoi aucun cours ne sera-t-il assuré le ' + dateFr(dayDate) + ' ?', 'Jour férié');
-    if (reasonInput === null)
-        return;
+
+    const reasonInput = prompt(
+        'Pourquoi aucun cours ne sera-t-il assuré le ' + dateFr(dayDate) + ' ?',
+        'Jour férié'
+    );
+
+    if (reasonInput === null) return;
+
     const reason = reasonInput.trim();
+
     if (!reason) {
         return notice('Veuillez saisir le motif de fermeture.');
     }
+
     const courseList = dayCourses
-        .map(course => '• ' +
-        String(course.display_time || course.start_time).slice(0, 5) +
-        ' – ' +
-        (course.display_name || course.course_name))
+        .map(course =>
+            '• ' +
+            String(course.display_time || course.start_time).slice(0, 5) +
+            ' – ' +
+            (course.display_name || course.course_name)
+        )
         .join('\n');
-    const confirmation = 'Confirmer l’annulation de TOUS les ' +
+
+    const confirmation =
+        'Confirmer l’annulation de TOUS les ' +
         dayCourses.length +
         ' cours du ' +
         dateFr(dayDate) +
@@ -1021,79 +1128,155 @@ async function cancelDayOccurrences(dayDate, weekday) {
         courseList +
         '\n\nMotif : ' +
         reason +
-        '\n\nLes cours récurrents des semaines suivantes seront conservés. Les cours ponctuels seront supprimés définitivement.';
-    if (!confirm(confirmation))
-        return;
-    const oneOffCourses = dayCourses.filter(course => course.start_date === dayDate &&
-        course.end_date === dayDate);
-    const recurringCourses = dayCourses.filter(course => !(course.start_date === dayDate && course.end_date === dayDate));
-    // 1. Annulation des seules occurrences des cours récurrents.
-    if (recurringCourses.length) {
-        const payload = recurringCourses.map(course => {
-            const existing = exceptions.find(e => e.series_id === course.id &&
-                e.occurrence_date === dayDate);
-            return {
-                series_id: course.id,
-                occurrence_date: dayDate,
-                is_cancelled: true,
-                overrides: { ...(existing?.overrides || {}) },
-                created_by: session.user.id
-            };
+        '\n\nLes cours seront conservés dans la base de données et pourront être restaurés ultérieurement.';
+
+    if (!confirm(confirmation)) return;
+
+    // Annulation de toutes les occurrences, ponctuelles ou récurrentes.
+    const payload = dayCourses.map(course => {
+        const existing = exceptions.find(e =>
+            e.series_id === course.id &&
+            e.occurrence_date === dayDate
+        );
+
+        return {
+            series_id: course.id,
+            occurrence_date: dayDate,
+            is_cancelled: true,
+            overrides: { ...(existing?.overrides || {}) },
+            created_by: session.user.id
+        };
+    });
+
+    const { error } = await db
+        .from('course_occurrence_exceptions')
+        .upsert(payload, {
+            onConflict: 'series_id,occurrence_date'
         });
-        const { error } = await db
-            .from('course_occurrence_exceptions')
-            .upsert(payload, { onConflict: 'series_id,occurrence_date' });
-        if (error) {
-            return notice('Annulation des cours récurrents impossible : ' + error.message);
-        }
+
+    if (error) {
+        return notice('Annulation impossible : ' + error.message);
     }
-    // 2. Suppression des disponibilités de tous les cours de la journée.
-    const allIds = dayCourses.map(course => course.id);
-    const { error: availabilityError } = await db
-        .from('coach_availability')
-        .delete()
-        .eq('occurrence_date', dayDate)
-        .in('series_id', allIds);
-    if (availabilityError) {
-        return notice('Suppression des disponibilités impossible : ' + availabilityError.message);
-    }
-    // 3. Suppression des exceptions puis des cours ponctuels.
-    for (const course of oneOffCourses) {
-        const { error: exceptionError } = await db
-            .from('course_occurrence_exceptions')
-            .delete()
-            .eq('series_id', course.id);
-        if (exceptionError) {
-            return notice('Suppression des exceptions impossible : ' + exceptionError.message);
-        }
-        const { error: courseError } = await db
-            .from('course_series')
-            .delete()
-            .eq('id', course.id);
-        if (courseError) {
-            return notice('Suppression du cours ponctuel impossible : ' + courseError.message);
-        }
-    }
-    // 4. Enregistrement indépendant du motif de fermeture.
+
+    // Enregistrement indépendant du motif de fermeture.
     const { error: closureError } = await db
         .from('course_day_closures')
         .upsert({
-        occurrence_date: dayDate,
-        reason,
-        created_by: session.user.id
-    }, { onConflict: 'occurrence_date' });
+            occurrence_date: dayDate,
+            reason,
+            created_by: session.user.id
+        }, {
+            onConflict: 'occurrence_date'
+        });
+
     if (closureError) {
-        return notice('Les cours ont été annulés, mais le motif de fermeture n’a pas pu être enregistré : ' +
-            closureError.message);
+        return notice(
+            'Les cours ont été annulés, mais le motif de fermeture n’a pas pu être enregistré : ' +
+            closureError.message
+        );
     }
+
     await loadBase();
     await loadWeek();
     render();
-    notice(dayCourses.length +
-        ' cours annulé(s) pour le ' +
+
+    notice(
+        dayCourses.length +
+        ' cours annulés pour le ' +
         dateFr(dayDate) +
         '. Motif : ' +
-        reason);
+        reason
+    );
+}
+
+async function restoreDayOccurrences(dayDate, weekday) {
+    const dayCourses = series
+        .filter(course =>
+            course.weekday === weekday &&
+            course.occurrence_date === dayDate &&
+            course.is_cancelled
+        );
+
+    if (!dayCourses.length) {
+        return notice('Aucun cours annulé à restaurer pour cette journée.');
+    }
+
+    const reason = getDayCancellationReason(dayDate) || 'Non précisé';
+
+    const courseList = dayCourses
+        .sort((a, b) =>
+            String(a.display_time).localeCompare(String(b.display_time))
+        )
+        .map(course =>
+            '• ' +
+            String(course.display_time || course.start_time).slice(0, 5) +
+            ' – ' +
+            (course.display_name || course.course_name)
+        )
+        .join('\n');
+
+    const confirmation =
+        'Restaurer tous les ' +
+        dayCourses.length +
+        ' cours du ' +
+        dateFr(dayDate) +
+        ' ?\n\n' +
+        courseList +
+        '\n\nMotif de fermeture précédent : ' +
+        reason +
+        '\n\nLes cours redeviendront actifs et leurs commandes de gestion seront rétablies.';
+
+    if (!confirm(confirmation)) return;
+
+    // Réactivation des occurrences en conservant leurs surcharges.
+    const payload = dayCourses.map(course => {
+        const existing = exceptions.find(e =>
+            e.series_id === course.id &&
+            e.occurrence_date === dayDate
+        );
+
+        return {
+            series_id: course.id,
+            occurrence_date: dayDate,
+            is_cancelled: false,
+            overrides: { ...(existing?.overrides || {}) },
+            created_by: session.user.id
+        };
+    });
+
+    const { error } = await db
+        .from('course_occurrence_exceptions')
+        .upsert(payload, {
+            onConflict: 'series_id,occurrence_date'
+        });
+
+    if (error) {
+        return notice('Restauration des cours impossible : ' + error.message);
+    }
+
+    // Suppression du motif de fermeture.
+    const { error: closureError } = await db
+        .from('course_day_closures')
+        .delete()
+        .eq('occurrence_date', dayDate);
+
+    if (closureError) {
+        return notice(
+            'Les cours ont été réactivés, mais le motif de fermeture n’a pas pu être supprimé : ' +
+            closureError.message
+        );
+    }
+
+    await loadBase();
+    await loadWeek();
+    render();
+
+    notice(
+        dayCourses.length +
+        ' cours restaurés pour le ' +
+        dateFr(dayDate) +
+        '.'
+    );
 }
 // ============================================================================
 // 9. MODIFICATION DES COURS ET DE LEURS OCCURRENCES
