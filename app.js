@@ -384,6 +384,7 @@ async function loadWeek() {
                 ...s,
                 occurrence_date: d,
                 is_cancelled: !!x?.is_cancelled,
+				is_overridden: !!x?.overrides?.day_overridden,
                 display_name:
                     x?.overrides?.override_course_name ||
                     x?.override_course_name ||
@@ -459,6 +460,37 @@ async function clearDayCancellationReason(date) {
     dayClosures = dayClosures.filter(x => x.occurrence_date !== date);
     return null;
 }
+
+async function finalizeDayAsNormal(date) {
+    // 1. Supprime le motif de fermeture de la journée
+    const clearErr = await clearDayCancellationReason(date);
+    if (clearErr) return clearErr;
+
+    // 2. Verrouille les cours annulés de ce jour pour qu'ils ne soient plus restaurables
+    const { data: rows, error } = await db
+        .from('course_occurrence_exceptions')
+        .select('id,overrides,is_cancelled')
+        .eq('occurrence_date', date)
+        .eq('is_cancelled', true);
+
+    if (error) return error.message;
+
+    for (const row of rows || []) {
+        const overrides = row.overrides && typeof row.overrides === 'object'
+            ? { ...row.overrides, day_overridden: true }
+            : { day_overridden: true };
+
+        const { error: updErr } = await db
+            .from('course_occurrence_exceptions')
+            .update({ overrides })
+            .eq('id', row.id);
+
+        if (updErr) return updErr.message;
+    }
+
+    return null;
+}
+
 async function setStatus(c, coach, requestedStatus) { const key = [coach.id, c.id, c.occurrence_date].join('|'); const previous = availabilityQueues.get(key) || Promise.resolve(); const task = previous.catch(() => { }).then(async () => { const current = getStatus(c, coach), status = current === requestedStatus ? '' : requestedStatus, old = availability.find(a => a.series_id === c.id && a.occurrence_date === c.occurrence_date && a.coach_id === coach.id); let result; if (status === '') {
     if (old)
         result = await db.from('coach_availability').delete().eq('coach_id', coach.id).eq('series_id', c.id).eq('occurrence_date', c.occurrence_date);
@@ -504,7 +536,7 @@ function render() {
 
     // Les cours annulés restent visibles uniquement dans la gestion.
     const displayedSeries = series.filter(course =>
-        managing || !course.is_cancelled
+        (managing && !course.is_overridden) || !course.is_cancelled
     );
     $('allView').textContent = 'Vue complète';
     $('coachTabs').classList.remove('hidden');
@@ -687,7 +719,7 @@ function render() {
             );
 
             const hasCancelledCourses = dayCoursesForDelete.some(
-                x => x.is_cancelled
+                x => x.is_cancelled && !x.is_overridden
             );
 
             const activeDayCourses = dayCoursesForDelete.filter(
@@ -1194,7 +1226,8 @@ async function restoreDayOccurrences(dayDate, weekday) {
         .filter(course =>
             course.weekday === weekday &&
             course.occurrence_date === dayDate &&
-            course.is_cancelled
+            course.is_cancelled &&
+            !course.is_overridden
         );
 
     if (!dayCourses.length) {
@@ -1696,6 +1729,15 @@ $('addCourse').onclick = async () => {
     button.disabled = true;
     button.textContent = 'Vérification…';
     try {
+        // Vérifie si la journée est actuellement fermée ou contient des cours annulés restaurables
+        const hasClosureReason = !!getDayCancellationReason(base);
+        const hasOtherCancelled = series.some(x =>
+            x.occurrence_date === base &&
+            x.is_cancelled &&
+            !x.is_overridden
+        );
+        const isDayCancelled = hasClosureReason || hasOtherCancelled;
+
         // Recherche les cours de même nom, jour et heure
         // qui existent réellement à la date choisie.
         const { data: matches, error: checkError } = await db
@@ -1710,6 +1752,7 @@ $('addCourse').onclick = async () => {
         }
         const sameCourses = (matches || []).filter(x => String(x.course_name || '').trim().toLocaleLowerCase('fr') ===
             name.toLocaleLowerCase('fr'));
+
         // Vérifie quelles occurrences de ces cours sont annulées.
         let cancelledMatches = [];
         if (sameCourses.length) {
@@ -1726,48 +1769,55 @@ $('addCourse').onclick = async () => {
                 e.occurrence_date === base &&
                 e.is_cancelled));
             const activeMatches = sameCourses.filter(course => !cancelledMatches.some(cancelled => cancelled.id === course.id));
-            // Si le cours existe mais que son occurrence a été annulée,
-            // proposer de restaurer cette occurrence plutôt que d'en créer une autre.
+
+            // Cas 1 : Le cours existait déjà ce jour-là mais avait été annulé
             if (!activeMatches.length && cancelledMatches.length) {
                 const restoredCourse = cancelledMatches[0];
-                const restore = confirm('Ce cours a déjà été prévu à cette date, mais son occurrence a été annulée.\n\n' +
-                    'Voulez-vous remettre le cours « ' + name + ' » le ' +
-                    dateFr(base) + ' à ' + time + ' ?\n\n' +
-                    'Le cours existant sera restauré, sans créer de nouvelle série.');
-                if (!restore)
+                const msg = isDayCancelled
+                    ? 'Ce cours a déjà été prévu à cette date, mais la journée a été annulée.\n\n' +
+                      'Si vous remettez « ' + name + ' » le ' + dateFr(base) + ' à ' + time + ', la journée redeviendra un jour normal : le motif de fermeture sera effacé et il ne sera plus possible de restaurer les autres cours annulés de ce jour.\n\n' +
+                      'Continuer ?'
+                    : 'Ce cours a déjà été prévu à cette date, mais son occurrence a été annulée.\n\n' +
+                      'Voulez-vous remettre le cours « ' + name + ' » le ' + dateFr(base) + ' à ' + time + ' ?';
+
+                if (!confirm(msg))
                     return;
+
                 const existingException = occurrenceExceptions.find(e => e.series_id === restoredCourse.id &&
                     e.occurrence_date === base);
                 const overrides = { ...(existingException?.overrides || {}) };
                 delete overrides.cancellation_reason;
+                delete overrides.day_overridden;
+
                 const { error: restoreError } = await db
                     .from('course_occurrence_exceptions')
                     .upsert({
-                    series_id: restoredCourse.id,
-                    occurrence_date: base,
-                    is_cancelled: false,
-                    overrides,
-                    created_by: session.user.id
-                }, { onConflict: 'series_id,occurrence_date' });
+                        series_id: restoredCourse.id,
+                        occurrence_date: base,
+                        is_cancelled: false,
+                        overrides,
+                        created_by: session.user.id
+                    }, { onConflict: 'series_id,occurrence_date' });
                 if (restoreError) {
                     return notice('Restauration du cours impossible : ' + restoreError.message);
                 }
-                const clearError = await clearDayCancellationReason(base);
+
+                // Réouvre la journée et verrouille tous les autres cours restés annulés ce jour-là
+                const clearError = await finalizeDayAsNormal(base);
                 $('courseName').value = '';
                 await loadBase();
                 await loadWeek();
                 render();
-                renderCourseManager();
                 if (clearError) {
-                    notice('Cours restauré, mais le motif de fermeture n’a pas pu être effacé : ' + clearError);
+                    notice('Cours restauré, mais la journée n’a pas pu être entièrement réinitialisée : ' + clearError);
                 }
                 else {
-                    notice('Cours restauré. La journée est de nouveau ouverte.');
+                    notice('Cours restauré. La journée est redevenue un jour normal.');
                 }
                 return;
             }
-            // Un cours actif existe déjà : le doublon est autorisé
-            // uniquement après confirmation.
+
+            // Un cours actif existe déjà : le doublon est autorisé uniquement après confirmation.
             if (activeMatches.length) {
                 const accepted = confirm('Attention vous allez ajouter deux fois le même cours, êtes-vous sûr ?\n\n' +
                     name + ' · ' + day + ' · ' + time);
@@ -1775,6 +1825,18 @@ $('addCourse').onclick = async () => {
                     return;
             }
         }
+
+        // Cas 2 : Création d'un tout nouveau cours sur une journée actuellement annulée
+        if (isDayCancelled) {
+            const confirmReset = confirm(
+                'Cette journée est actuellement annulée.\n\n' +
+                'Si vous ajoutez ce cours, la journée redeviendra un jour normal : le motif de fermeture sera effacé et il ne sera plus possible de restaurer les anciens cours de ce jour.\n\n' +
+                'Continuer ?'
+            );
+            if (!confirmReset)
+                return;
+        }
+
         // Création du nouveau cours.
         const row = {
             course_name: name,
@@ -1792,18 +1854,18 @@ $('addCourse').onclick = async () => {
         if (error) {
             return notice('Ajout impossible : ' + error.message);
         }
-        // Toute nouvelle création rouvre la journée.
-        const clearReasonError = await clearDayCancellationReason(base);
+
+        // Réouvre la journée et désactive définitivement la restauration des anciens cours.
+        const clearReasonError = await finalizeDayAsNormal(base);
         $('courseName').value = '';
         await loadBase();
         await loadWeek();
         render();
-        renderCourseManager();
         if (clearReasonError) {
-            notice('Cours ajouté, mais le motif de fermeture n’a pas pu être effacé : ' + clearReasonError);
+            notice('Cours ajouté, mais la journée n’a pas pu être entièrement réinitialisée : ' + clearReasonError);
         }
         else {
-            notice('Cours ajouté. La journée est de nouveau ouverte.');
+            notice('Cours ajouté. La journée est redevenue un jour normal.');
         }
     }
     finally {
@@ -1811,6 +1873,7 @@ $('addCourse').onclick = async () => {
         button.textContent = '+ Ajouter le cours';
     }
 };
+
 // ============================================================================
 // 10. REPRISE DE SESSION, ÉTAT DU RÉSEAU ET SERVICE WORKER
 // ============================================================================
