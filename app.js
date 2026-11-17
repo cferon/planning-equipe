@@ -7,7 +7,7 @@ const SUPABASE_KEY = 'sb_publishable_8QyDkTgaV303nNwaYqbYTQ_rXyftELQ';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const colors = { Pretty: '#16865a', Marine: '#3264cf', Manuella: '#8750b5', JC: '#bf6b10', Cyrielle: '#d13e8a', Melvil: '#087e8b', Gwen: '#a23e48' };
-let coaches = [], series = [], availability = [], exceptions = [], dayClosures = [], active = '', view = 'coach', currentWeek = '', session = null, initBusy = false, currentMember = null, isAdmin = false;
+let coaches = [], series = [], availability = [], exceptions = [], dayClosures = [], active = '', view = 'all', currentWeek = '', session = null, initBusy = false, currentMember = null, isAdmin = false;
 let cleanupMonths = [];
 let weekLoadVersion = 0;
 const availabilityQueues = new Map();
@@ -261,20 +261,17 @@ async function init() { if (initBusy)
         $('weekDate').value = currentWeek;
     }
     await loadBase();
-    if (isAdmin) {
-        view = 'all';
-    }
-    else {
-        const own = coaches.find(c => c.id === member.coach_id);
-        if (!own) {
-            await db.auth.signOut();
-            $('appPanel').classList.add('hidden');
-            $('loginPanel').classList.remove('hidden');
-            $('loginMsg').textContent = 'Votre compte n’est pas associé à un profil coach. Contactez la personne qui gère le planning.';
-            return;
-        }
-        active = own.name;
-        view = 'coach';
+    if (!isAdmin) {
+      const own = coaches.find(c => c.id === member.coach_id);
+      if (!own) {
+          await db.auth.signOut();
+          $('appPanel').classList.add('hidden');
+          $('loginPanel').classList.remove('hidden');
+          $('loginMsg').textContent = 'Votre compte n’est pas associé à un profil coach. Contactez la personne qui gère le planning.';
+          return;
+      }
+      active = own.name;
+      view = 'coach';
     }
     await loadWeek();
     render();
