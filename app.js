@@ -26,27 +26,39 @@ function notice(t) { alert(t); }
 // Connexion par code à usage unique (OTP), navigation et actions principales.
 // ============================================================================
 // Étape 1 : Demande d'envoi du code OTP
+
 $('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+
     const email = $('email').value.trim().toLowerCase();
-    $('loginMsg').textContent = 'Envoi du code…';
+    $('loginMsg').textContent = 'Vérification en cours…';
+
     try {
         const { error } = await db.auth.signInWithOtp({
             email: email,
-            options: { shouldCreateUser: true }
+            options: { shouldCreateUser: false }
         });
+
+        // Ne jamais révéler si l'adresse est autorisée ou non.
         if (error) {
-            $('loginMsg').textContent = 'Erreur : ' + error.message;
+            console.warn('Demande de connexion non aboutie :', error.message);
         }
-        else {
-            $('loginMsg').textContent = 'Code envoyé ! Vérifiez vos e-mails.';
-            $('loginForm').classList.add('hidden');
-            $('verifyForm').classList.remove('hidden');
-            $('loginInstruction').textContent = 'Entrez le code à 6 chiffres reçu à l’adresse ' + email;
-        }
+
+        $('loginMsg').textContent =
+            'Si cette adresse est autorisée, un code de connexion lui a été envoyé.';
+
+        $('loginForm').classList.add('hidden');
+        $('verifyForm').classList.remove('hidden');
+
+        $('loginInstruction').textContent =
+            'Si vous avez reçu un code, saisissez-le ci-dessous.';
+
     }
     catch (err) {
-        $('loginMsg').textContent = 'Erreur : ' + err.message;
+        console.warn('Erreur de connexion :', err);
+
+        $('loginMsg').textContent =
+            'Si cette adresse est autorisée, un code de connexion lui a été envoyé.';
     }
 });
 // Étape 2 : Vérification du code à 6 chiffres
