@@ -36,7 +36,7 @@ $('loginForm').addEventListener('submit', async (e) => {
     try {
         const { error } = await db.auth.signInWithOtp({
             email: email,
-            options: { shouldCreateUser: false }
+            options: { shouldCreateUser: true }
         });
 
         // Ne jamais révéler si l'adresse est autorisée ou non.
