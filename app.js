@@ -519,6 +519,14 @@ finally {
 // 7. CONSTRUCTION DE L’INTERFACE DU PLANNING
 // Affiche les vues coach, complète et gestion, ainsi que les alertes et compteurs.
 // ============================================================================
+document.addEventListener('click', () => {
+    document.querySelectorAll('.alert-popup-open').forEach(popup => {
+        popup.style.display = 'none';
+        popup.classList.remove('alert-popup-open');
+        const btn = popup.previousElementSibling;
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+});
 function render() {
     const tabs = $('coachTabs');
     tabs.innerHTML = '';
@@ -687,15 +695,21 @@ function render() {
             alertPopup.textContent = alertDetails;
             alertPopup.style.cssText = 'display:none;position:fixed;z-index:9999;width:max-content;min-width:190px;max-width:calc(100vw - 28px);max-height:60vh;overflow:auto;overflow-wrap:anywhere;white-space:pre-line;background:#fff;border:1px solid #d1d5db;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);padding:10px 12px;color:#334155;font-size:12px;font-weight:500;line-height:1.45';
             const toggleAlert = () => {
-                const opening = alertPopup.style.display === 'none';
-                if (opening) {
-                    const r = icon.getBoundingClientRect();
-                    alertPopup.style.left = '50%';
-                    alertPopup.style.top = (r.top + r.height / 2) + 'px';
-                    alertPopup.style.transform = 'translate(-50%,-50%)';
-                }
-                alertPopup.style.display = opening ? 'block' : 'none';
-                icon.setAttribute('aria-expanded', String(opening));
+              const opening = alertPopup.style.display === 'none';
+              // Ferme d'abord les autres bulles éventuellement ouvertes
+              document.querySelectorAll('.alert-popup-open').forEach(p => {
+                  p.style.display = 'none';
+                  p.classList.remove('alert-popup-open');
+              });
+              if (opening) {
+                  const r = icon.getBoundingClientRect();
+                  alertPopup.style.left = '50%';
+                  alertPopup.style.top = (r.top + r.height / 2) + 'px';
+                  alertPopup.style.transform = 'translate(-50%,-50%)';
+                  alertPopup.classList.add('alert-popup-open');
+              }
+              alertPopup.style.display = opening ? 'block' : 'none';
+              icon.setAttribute('aria-expanded', String(opening));
             };
             icon.addEventListener('click', e => {
                 e.stopPropagation();
@@ -1323,6 +1337,96 @@ async function restoreDayOccurrences(dayDate, weekday) {
 // ============================================================================
 // 9. MODIFICATION DES COURS ET DE LEURS OCCURRENCES
 // ============================================================================
+function makeModalField(labelText, inputEl) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-bottom:10px';
+    const lab = document.createElement('label');
+    lab.textContent = labelText;
+    lab.style.cssText = 'font-size:12px;font-weight:700;color:#334155';
+    wrap.append(lab, inputEl);
+    return wrap;
+}
+
+function buildCourseModalUI(c, s) {
+    const old = document.getElementById('courseEditModal');
+    if (old) old.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'courseEditModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:14px;z-index:10000';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:12px;padding:18px;width:100%;max-width:420px;max-height:90vh;overflow:auto;box-shadow:0 10px 25px rgba(0,0,0,.2)';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Modifier le cours';
+    title.style.cssText = 'margin:0 0 12px;font-size:17px';
+
+    const nameIn = document.createElement('input');
+    nameIn.type = 'text';
+    nameIn.value = c.display_name || s.course_name;
+
+    const timeIn = document.createElement('input');
+    timeIn.type = 'time';
+    timeIn.value = String(c.display_time || s.start_time).slice(0, 5);
+
+    const durIn = document.createElement('input');
+    durIn.type = 'number';
+    durIn.min = '1';
+    durIn.max = '1440';
+    durIn.value = String(s.duration_minutes || 60);
+
+    box.append(
+        title,
+        makeModalField('Nom du cours', nameIn),
+        makeModalField('Heure de début', timeIn),
+        makeModalField('Durée (minutes)', durIn)
+    );
+    overlay.append(box);
+    document.body.append(overlay);
+    return { overlay, box, nameIn, timeIn, durIn };
+}
+
+function appendScheduleFields(box, c, s) {
+    const daySel = document.createElement('select');
+    days.forEach((dName, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx + 1);
+        opt.textContent = dName;
+        if (idx + 1 === s.weekday) opt.selected = true;
+        daySel.append(opt);
+    });
+
+    const isOneOff = !!(s.end_date && s.end_date === s.start_date);
+    const recSel = document.createElement('select');
+    [['1', 'Chaque semaine'], ['2', 'Cours ponctuel']].forEach(([val, txt]) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = txt;
+        if ((isOneOff && val === '2') || (!isOneOff && val === '1')) opt.selected = true;
+        recSel.append(opt);
+    });
+
+    const startIn = document.createElement('input');
+    startIn.type = 'date';
+    startIn.value = isOneOff ? (s.start_date || c.occurrence_date) : c.occurrence_date;
+
+    const endIn = document.createElement('input');
+    endIn.type = 'date';
+    endIn.value = isOneOff ? '' : (s.end_date || '');
+    const endWrap = makeModalField('Date de fin facultative', endIn);
+    endWrap.style.display = isOneOff ? 'none' : 'flex';
+
+    recSel.onchange = () => {
+        endWrap.style.display = recSel.value === '2' ? 'none' : 'flex';
+    };
+    box.append(
+        makeModalField('Jour', daySel),
+        makeModalField('Récurrence', recSel),
+        makeModalField('Date de début', startIn),
+        endWrap
+    );
+    return { daySel, recSel, startIn, endIn };
+}
 async function editCourseField(c, field) {
     const s = series.find(x => x.id === c.id);
     if (!s)
@@ -1399,75 +1503,74 @@ async function editCourseField(c, field) {
 }
 async function editCourseSeries(c) {
     const s = series.find(x => x.id === c.id);
-    if (!s)
-        return notice('Cours introuvable. Actualisez la page et réessayez.');
-    const n = prompt('Nom du cours', c.display_name || s.course_name);
-    if (n === null)
-        return;
-    const name = n.trim();
-    if (!name)
-        return notice('Le nom du cours ne peut pas être vide.');
-    const t = prompt('Heure de début (HH:MM)', String(c.display_time || s.start_time).slice(0, 5));
-    if (t === null)
-        return;
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t))
-        return notice('Heure invalide. Format attendu : HH:MM.');
-    const durationInput = prompt('Durée du cours en minutes (nombre entier positif)', String(s.duration_minutes || 60));
-    if (durationInput === null)
-        return;
-    const duration = Number(durationInput);
-    if (!Number.isInteger(duration) || duration < 1 || duration > 1440)
-        return notice('Durée invalide. Saisissez un nombre entier entre 1 et 1440 minutes.');
-    const d = prompt('Jour : 1=Lundi, 2=Mardi, 3=Mercredi, 4=Jeudi, 5=Vendredi, 6=Samedi', String(s.weekday));
-    if (d === null)
-        return;
-    const weekday = Number(d);
-    if (!Number.isInteger(weekday) || weekday < 1 || weekday > 6)
-        return notice('Jour invalide : choisissez un nombre de 1 à 6.');
-    const isOneOff = !!(s.end_date && s.end_date === s.start_date);
-    const recurrence = prompt('Récurrence : tapez 1 pour chaque semaine, 2 pour un cours ponctuel', isOneOff ? '2' : '1');
-    if (recurrence === null)
-        return;
-    if (!['1', '2'].includes(recurrence))
-        return notice('Choix invalide. Tapez 1 ou 2.');
-    const startDefault = isOneOff ? (s.start_date || c.occurrence_date) : c.occurrence_date;
-    const startDate = prompt('Date de début (AAAA-MM-JJ)', startDefault);
-    if (startDate === null)
-        return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(Date.parse(startDate + 'T12:00:00')))
-        return notice('Date de début invalide. Format attendu : AAAA-MM-JJ.');
-    let endDate = null;
-    if (recurrence === '2')
-        endDate = startDate;
-    else {
-        const end = prompt('Date de fin facultative (AAAA-MM-JJ), laisser vide pour une récurrence sans fin', s.end_date || '');
-        if (end === null)
-            return;
-        if (end.trim()) {
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(end.trim()) || end.trim() < startDate)
-                return notice('Date de fin invalide ou antérieure à la date de début.');
-            endDate = end.trim();
+    if (!s) return notice('Cours introuvable. Actualisez la page et réessayez.');
+ 
+    const { overlay, box, nameIn, timeIn, durIn } = buildCourseModalUI(c, s);
+    const { daySel, recSel, startIn, endIn } = appendScheduleFields(box, c, s);
+ 
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:14px';
+ 
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Annuler';
+    cancelBtn.onclick = () => overlay.remove();
+ 
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'Enregistrer';
+    saveBtn.style.cssText = 'background:#16804a;color:#fff;border-color:#16804a;font-weight:700';
+ 
+    saveBtn.onclick = async () => {
+        const name = nameIn.value.trim();
+        const t = timeIn.value.trim();
+        const duration = Number(durIn.value);
+        const weekday = Number(daySel.value);
+        const startDate = startIn.value;
+        const endDate = recSel.value === '2' ? startDate : (endIn.value.trim() || null);
+ 
+        if (!name) return notice('Le nom du cours ne peut pas être vide.');
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) return notice('Heure invalide.');
+        if (!Number.isInteger(duration) || duration < 1 || duration > 1440) return notice('Durée invalide.');
+        if (!startDate) return notice('Date de début invalide.');
+        if (endDate && endDate < startDate) return notice('La date de fin doit être après le début.');
+ 
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Enregistrement…';
+ 
+        const { error } = await db.from('course_series').update({
+            course_name: name,
+            weekday,
+            start_time: t + ':00',
+            duration_minutes: duration,
+            start_date: startDate,
+            end_date: endDate,
+            updated_at: new Date().toISOString()
+        }).eq('id', s.id);
+ 
+        if (error) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Enregistrer';
+            return notice('Modification impossible : ' + error.message);
         }
-    }
-    if (!confirm('Ces changements s’appliqueront à toute la série de cours (nom, heure, jour, date de début et récurrence), pas uniquement à cette occurrence. Continuer ?'))
-        return;
-    const { error } = await db.from('course_series').update({ course_name: name, weekday, start_time: t + ':00', duration_minutes: duration, start_date: startDate, end_date: endDate, updated_at: new Date().toISOString() }).eq('id', s.id);
-    if (error)
-        return notice('Modification impossible : ' + error.message);
-    // Clear occurrence-level name/time overrides for the edited series occurrence so new series values display.
-    const ex = exceptions.find(x => x.series_id === s.id && x.occurrence_date === c.occurrence_date);
-    if (ex && ex.overrides) {
-        const overrides = { ...ex.overrides };
-        delete overrides.override_course_name;
-        delete overrides.override_start_time;
-        const { error: exError } = await db.from('course_occurrence_exceptions').update({ overrides }).eq('series_id', s.id).eq('occurrence_date', c.occurrence_date);
-        if (exError)
-            notice('Le cours a été modifié, mais une ancienne modification locale reste présente : ' + exError.message);
-    }
-    await loadBase();
-    await loadWeek();
-    render();
-    if (!$('courseManager').classList.contains('hidden')) { }
+        const ex = exceptions.find(x => x.series_id === s.id && x.occurrence_date === c.occurrence_date);
+        if (ex && ex.overrides) {
+            const overrides = { ...ex.overrides };
+            delete overrides.override_course_name;
+            delete overrides.override_start_time;
+            await db.from('course_occurrence_exceptions')
+                .update({ overrides })
+                .eq('series_id', s.id)
+                .eq('occurrence_date', c.occurrence_date);
+        }
+        overlay.remove();
+        await loadBase();
+        await loadWeek();
+        render();
+    };
+
+    actions.append(cancelBtn, saveBtn);
+    box.append(actions);
 }
 async function deleteOccurrence(c) {
     const s = series.find(x => x.id === c.id);
